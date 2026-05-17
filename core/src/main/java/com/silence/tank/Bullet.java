@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.Rectangle;
 public final class Bullet {
     private final boolean fromPlayer;
     private final boolean powerShot;
+    private final float speed;
     private float previousX;
     private float previousY;
     private float x;
@@ -13,8 +14,13 @@ public final class Bullet {
     private boolean alive = true;
 
     public Bullet(boolean fromPlayer, boolean powerShot, float x, float y, Direction direction) {
+        this(fromPlayer, powerShot, x, y, direction, powerShot ? GameConfig.POWER_BULLET_SPEED : GameConfig.BULLET_SPEED);
+    }
+
+    public Bullet(boolean fromPlayer, boolean powerShot, float x, float y, Direction direction, float speed) {
         this.fromPlayer = fromPlayer;
         this.powerShot = powerShot;
+        this.speed = speed;
         this.x = x;
         this.y = y;
         this.previousX = x;
@@ -25,7 +31,6 @@ public final class Bullet {
     public void update(float delta) {
         previousX = x;
         previousY = y;
-        float speed = powerShot ? GameConfig.POWER_BULLET_SPEED : GameConfig.BULLET_SPEED;
         x += direction.dx * speed * delta;
         y += direction.dy * speed * delta;
     }
@@ -48,6 +53,10 @@ public final class Bullet {
 
     public boolean powerShot() {
         return powerShot;
+    }
+
+    public float speed() {
+        return speed;
     }
 
     public float x() {

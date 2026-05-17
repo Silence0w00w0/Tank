@@ -25,6 +25,8 @@ public final class GameWorld {
     private int score;
     private int highScore;
     private boolean baseAlive = true;
+    private float baseShieldTimer;
+    private float levelElapsedSeconds;
     private float levelAdvanceTimer;
 
     public GameWorld(List<LevelDefinition> levels, Random random) {
@@ -85,6 +87,8 @@ public final class GameWorld {
             return;
         }
 
+        levelElapsedSeconds += delta;
+        tickBaseShield(delta);
         tickPlayers(delta, commands);
         tickEnemies(delta);
         spawnEnemies(delta);
@@ -116,6 +120,8 @@ public final class GameWorld {
         level = levels.get(index);
         tiles = level.copyTiles();
         baseAlive = true;
+        baseShieldTimer = GameConfig.BASE_RESPAWN_SHIELD_SECONDS;
+        levelElapsedSeconds = 0f;
         players.clear();
         enemies.clear();
         bullets.clear();
@@ -364,6 +370,7 @@ public final class GameWorld {
 
     private void fire(Tank tank) {
         boolean powerShot = tank.isPlayer() ? tank.hasPowerShot() : tank.enemyType().powerShot;
+        float bulletSpeed = tank.isPlayer() && powerShot ? GameConfig.POWER_BULLET_SPEED : GameConfig.BULLET_SPEED;
         float cooldown = tank.isPlayer()
                 ? (powerShot ? GameConfig.PLAYER_POWER_FIRE_COOLDOWN : GameConfig.PLAYER_FIRE_COOLDOWN)
                 : GameConfig.ENEMY_FIRE_COOLDOWN;
@@ -372,7 +379,7 @@ public final class GameWorld {
         }
         float bulletX = tank.centerX() - 4f + tank.direction().dx * 15f;
         float bulletY = tank.centerY() - 4f + tank.direction().dy * 15f;
-        bullets.add(new Bullet(tank.isPlayer(), powerShot, bulletX, bulletY, tank.direction()));
+        bullets.add(new Bullet(tank.isPlayer(), powerShot, bulletX, bulletY, tank.direction(), bulletSpeed));
         tank.fireCooldown(cooldown);
     }
 
@@ -433,11 +440,15 @@ public final class GameWorld {
 
     private void resolveBulletEntityHit(Bullet bullet) {
         if (baseAlive && bullet.bounds().overlaps(baseBounds())) {
-            baseAlive = false;
             bullet.destroy();
-            explosions.add(new Explosion(baseBounds().x, baseBounds().y));
-            status = GameStatus.GAME_OVER;
-            highScore = Math.max(highScore, score);
+            if (baseShielded()) {
+                explosions.add(new Explosion(baseBounds().x, baseBounds().y));
+            } else {
+                baseAlive = false;
+                explosions.add(new Explosion(baseBounds().x, baseBounds().y));
+                status = GameStatus.GAME_OVER;
+                highScore = Math.max(highScore, score);
+            }
             return;
         }
 
@@ -469,14 +480,31 @@ public final class GameWorld {
     }
 
     private void maybeDropPowerUp(Tank enemy) {
-        if (random.nextFloat() >= GameConfig.POWERUP_DROP_CHANCE) {
+        if (random.nextFloat() >= currentPowerUpDropChance()) {
             return;
         }
-        PowerUpType[] types = PowerUpType.values();
+        PowerUpType[] types = availablePowerUpsForCurrentLevel();
         PowerUpType type = types[random.nextInt(types.length)];
         float x = Math.max(0f, Math.min(enemy.x(), arenaWidth() - GameConfig.TILE_SIZE));
         float y = Math.max(0f, Math.min(enemy.y(), arenaHeight() - GameConfig.TILE_SIZE));
         powerUps.add(new PowerUp(type, x, y));
+    }
+
+    private float currentPowerUpDropChance() {
+        return Math.min(
+                GameConfig.POWERUP_MAX_DROP_CHANCE,
+                GameConfig.POWERUP_BASE_DROP_CHANCE + levelIndex * GameConfig.POWERUP_DROP_CHANCE_PER_LEVEL
+        );
+    }
+
+    private PowerUpType[] availablePowerUpsForCurrentLevel() {
+        if (levelIndex <= 0) {
+            return new PowerUpType[]{PowerUpType.SHIELD, PowerUpType.SPEED, PowerUpType.POWER_SHOT};
+        }
+        if (levelIndex == 1) {
+            return new PowerUpType[]{PowerUpType.SHIELD, PowerUpType.SPEED, PowerUpType.POWER_SHOT, PowerUpType.FORTIFY_BASE, PowerUpType.CLEAR_SCREEN};
+        }
+        return PowerUpType.values();
     }
 
     private void tickPowerUps(float delta) {
@@ -508,6 +536,7 @@ public final class GameWorld {
         player.setPosition(tileToWorldX(spawn.x()), tileToWorldY(spawn.y()));
         player.direction(Direction.UP);
         player.shieldTimer(GameConfig.RESPAWN_SHIELD_SECONDS);
+        baseShieldTimer = GameConfig.BASE_RESPAWN_SHIELD_SECONDS;
     }
 
     private void collectPowerUps() {
@@ -531,6 +560,7 @@ public final class GameWorld {
             case SHIELD -> player.shieldTimer(GameConfig.SHIELD_SECONDS);
             case SPEED -> player.speedTimer(GameConfig.SPEED_SECONDS);
             case POWER_SHOT -> player.powerShotTimer(GameConfig.POWER_SHOT_SECONDS);
+            case FORTIFY_BASE -> fortifyBaseWalls();
             case EXTRA_LIFE -> player.lives(player.lives() + 1);
             case CLEAR_SCREEN -> {
                 for (Tank enemy : enemies) {
@@ -543,13 +573,41 @@ public final class GameWorld {
         }
     }
 
+    private void fortifyBaseWalls() {
+        GridCoord base = level.basePosition();
+        for (GridCoord coord : baseProtectionCoords()) {
+            if (coord.x() == base.x() && coord.y() == base.y()) {
+                continue;
+            }
+            if (inBounds(coord.x(), coord.y())) {
+                tiles[coord.y()][coord.x()] = TileType.STEEL;
+                explosions.add(new Explosion(tileToWorldX(coord.x()), tileToWorldY(coord.y())));
+            }
+        }
+    }
+
+    private List<GridCoord> baseProtectionCoords() {
+        GridCoord base = level.basePosition();
+        return List.of(
+                new GridCoord(base.x() - 1, base.y() - 1),
+                new GridCoord(base.x(), base.y() - 1),
+                new GridCoord(base.x() + 1, base.y() - 1),
+                new GridCoord(base.x() - 1, base.y()),
+                new GridCoord(base.x() + 1, base.y())
+        );
+    }
+
+    private void tickBaseShield(float delta) {
+        baseShieldTimer = Math.max(0f, baseShieldTimer - delta);
+    }
+
     private void tickExplosions(float delta) {
         explosions.forEach(explosion -> explosion.update(delta));
         explosions.removeIf(explosion -> !explosion.alive());
     }
 
     private void spawnEnemies(float delta) {
-        if (enemies.size() >= GameConfig.MAX_ENEMIES_ON_FIELD) {
+        if (enemies.size() >= maxEnemiesOnField()) {
             return;
         }
         for (WaveRuntime runtime : waves) {
@@ -557,7 +615,7 @@ public final class GameWorld {
                 continue;
             }
             runtime.timer -= delta;
-            if (runtime.timer <= 0f && enemies.size() < GameConfig.MAX_ENEMIES_ON_FIELD) {
+            if (runtime.timer <= 0f && enemies.size() < maxEnemiesOnField()) {
                 GridCoord spawn = runtime.nextSpawnPoint();
                 float x = tileToWorldX(spawn.x());
                 float y = tileToWorldY(spawn.y());
@@ -566,13 +624,20 @@ public final class GameWorld {
                 if (canOccupy(enemy, x, y)) {
                     enemies.add(enemy);
                     runtime.spawned++;
-                    runtime.timer = runtime.wave.spawnEvery();
+                    runtime.timer = currentSpawnInterval(runtime.wave.spawnEvery());
                 } else {
                     runtime.timer = 0.35f;
                 }
             }
             break;
         }
+    }
+
+    private float currentSpawnInterval(float baseInterval) {
+        float progress = Math.min(1f, levelElapsedSeconds / GameConfig.ENEMY_SPAWN_RAMP_SECONDS);
+        float multiplier = GameConfig.ENEMY_SPAWN_START_MULTIPLIER
+                + (GameConfig.ENEMY_SPAWN_END_MULTIPLIER - GameConfig.ENEMY_SPAWN_START_MULTIPLIER) * progress;
+        return Math.max(0.35f, baseInterval * multiplier);
     }
 
     private void checkLevelComplete() {
@@ -645,6 +710,10 @@ public final class GameWorld {
         tiles[y][x] = tile;
     }
 
+    public void setBaseShieldTimerForTest(float baseShieldTimer) {
+        this.baseShieldTimer = Math.max(0f, baseShieldTimer);
+    }
+
     public void addBulletForTest(Bullet bullet) {
         bullets.add(bullet);
     }
@@ -671,6 +740,8 @@ public final class GameWorld {
         score = snapshot.score;
         highScore = snapshot.highScore;
         baseAlive = snapshot.baseAlive;
+        baseShieldTimer = snapshot.baseShieldTimer;
+        levelElapsedSeconds = snapshot.levelElapsedSeconds;
 
         players.clear();
         snapshot.players.stream().map(GameSnapshot.TankState::toTank).forEach(players::add);
@@ -724,6 +795,22 @@ public final class GameWorld {
         return baseAlive;
     }
 
+    public boolean baseShielded() {
+        return baseShieldTimer > 0f;
+    }
+
+    public float baseShieldTimer() {
+        return baseShieldTimer;
+    }
+
+    public float levelElapsedSeconds() {
+        return levelElapsedSeconds;
+    }
+
+    public int maxEnemiesOnField() {
+        return Math.min(GameConfig.MAX_ENEMIES_ON_FIELD + 1, Math.max(3, 4 + levelIndex));
+    }
+
     public int score() {
         return score;
     }
@@ -744,7 +831,7 @@ public final class GameWorld {
 
         private WaveRuntime(EnemyWave wave) {
             this.wave = wave;
-            this.timer = 0f;
+            this.timer = GameConfig.ENEMY_INITIAL_SPAWN_DELAY;
         }
 
         private GridCoord nextSpawnPoint() {

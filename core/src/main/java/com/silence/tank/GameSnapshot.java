@@ -14,6 +14,8 @@ public final class GameSnapshot implements Serializable {
     public int score;
     public int highScore;
     public boolean baseAlive;
+    public float baseShieldTimer;
+    public float levelElapsedSeconds;
     public List<String> tileRows;
     public List<TankState> players;
     public List<TankState> enemies;
@@ -28,6 +30,8 @@ public final class GameSnapshot implements Serializable {
         snapshot.score = world.score();
         snapshot.highScore = world.highScore();
         snapshot.baseAlive = world.baseAlive();
+        snapshot.baseShieldTimer = world.baseShieldTimer();
+        snapshot.levelElapsedSeconds = world.levelElapsedSeconds();
         snapshot.tileRows = new ArrayList<>();
         for (int y = 0; y < world.level().height(); y++) {
             StringBuilder row = new StringBuilder(world.level().width());
@@ -95,6 +99,7 @@ public final class GameSnapshot implements Serializable {
         public float x;
         public float y;
         public Direction direction;
+        public float speed;
 
         public static BulletState from(Bullet bullet) {
             BulletState state = new BulletState();
@@ -103,11 +108,13 @@ public final class GameSnapshot implements Serializable {
             state.x = bullet.x();
             state.y = bullet.y();
             state.direction = bullet.direction();
+            state.speed = bullet.speed();
             return state;
         }
 
         public Bullet toBullet() {
-            return new Bullet(fromPlayer, powerShot, x, y, direction);
+            float restoredSpeed = speed > 0f ? speed : (powerShot ? GameConfig.POWER_BULLET_SPEED : GameConfig.BULLET_SPEED);
+            return new Bullet(fromPlayer, powerShot, x, y, direction, restoredSpeed);
         }
     }
 

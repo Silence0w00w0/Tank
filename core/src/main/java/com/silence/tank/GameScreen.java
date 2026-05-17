@@ -144,12 +144,23 @@ public final class GameScreen extends ScreenAdapter {
         }
         Rectangle base = world.baseBounds();
         batch.draw(region(AssetKeys.BASE), base.x, base.y, base.width, base.height);
+        if (world.baseShielded()) {
+            Color old = batch.getColor();
+            batch.setColor(0.55f, 0.85f, 1f, 0.62f);
+            batch.draw(region(AssetKeys.POWER_SHIELD), base.x, base.y, base.width, base.height);
+            batch.setColor(old);
+        }
     }
 
     private void drawPowerUps() {
         for (PowerUp powerUp : world.powerUps()) {
             if (powerUp.active()) {
+                Color old = batch.getColor();
+                if (powerUp.type() == PowerUpType.FORTIFY_BASE) {
+                    batch.setColor(0.72f, 0.78f, 0.82f, 1f);
+                }
                 batch.draw(region(powerUp.type().region), powerUp.x(), powerUp.y(), GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
+                batch.setColor(old);
             }
         }
     }

@@ -62,12 +62,39 @@ class GameWorldTest {
                 "....",
                 "...."
         );
+        world.setBaseShieldTimerForTest(0f);
         world.addBulletForTest(new Bullet(false, false, world.baseBounds().x + 12f, world.baseBounds().y + 12f, Direction.DOWN));
 
         world.update(0.01f, InputCommand.none());
 
         assertEquals(GameStatus.GAME_OVER, world.status());
         assertTrue(!world.baseAlive());
+    }
+
+    @Test
+    void respawnGrantsPlayerAndBaseInvincibility() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addEnemyForTest(Tank.enemy(EnemyType.ARMORED, world.tileToWorldX(3), world.tileToWorldY(0)));
+        world.setBaseShieldTimerForTest(0f);
+        world.player().shieldTimer(0f);
+        world.addBulletForTest(new Bullet(false, false, world.player().x() + 12f, world.player().y() + 12f, Direction.DOWN));
+
+        world.update(0.01f, InputCommand.none());
+
+        assertEquals(2, world.player().lives());
+        assertTrue(world.player().hasShield());
+        assertTrue(world.baseShielded());
+
+        world.addBulletForTest(new Bullet(true, false, world.baseBounds().x + 12f, world.baseBounds().y + 12f, Direction.UP));
+        world.update(0.01f, InputCommand.none());
+
+        assertTrue(world.baseAlive());
+        assertEquals(GameStatus.PLAYING, world.status());
     }
 
     @Test
@@ -107,6 +134,81 @@ class GameWorldTest {
         assertTrue(world.enemies().isEmpty());
         assertEquals(1, world.powerUps().size());
         assertEquals(PowerUpType.SHIELD, world.powerUps().get(0).type());
+    }
+
+    @Test
+    void fortifyBasePowerUpConvertsProtectionWallsToSteel() {
+        GameWorld world = new GameWorld(List.of(protectedBaseLevel()), new Random(8));
+        world.startNewGame();
+        world.addPowerUpForTest(new PowerUp(PowerUpType.FORTIFY_BASE, world.player().x(), world.player().y()));
+
+        world.update(0.01f, InputCommand.none());
+
+        GridCoord base = world.level().basePosition();
+        assertEquals(TileType.STEEL, world.tileAt(base.x() - 1, base.y() - 1));
+        assertEquals(TileType.STEEL, world.tileAt(base.x(), base.y() - 1));
+        assertEquals(TileType.STEEL, world.tileAt(base.x() + 1, base.y() - 1));
+        assertEquals(TileType.STEEL, world.tileAt(base.x() - 1, base.y()));
+        assertEquals(TileType.STEEL, world.tileAt(base.x() + 1, base.y()));
+    }
+
+    @Test
+    void higherLevelsUnlockMorePowerUpTypes() {
+        LevelDefinition level = protectedBaseLevel();
+        GameWorld world = new GameWorld(List.of(level, level, level), new LastDropRandom());
+        world.loadLevel(2, GameConfig.INITIAL_LIVES);
+        Tank enemy = Tank.enemy(EnemyType.BASIC, world.tileToWorldX(3), world.tileToWorldY(1));
+        world.addEnemyForTest(enemy);
+        world.addBulletForTest(new Bullet(true, false, enemy.x() + 12f, enemy.y() + 12f, Direction.UP));
+
+        world.update(0f, InputCommand.none());
+
+        assertEquals(1, world.powerUps().size());
+        assertEquals(PowerUpType.EXTRA_LIFE, world.powerUps().get(0).type());
+    }
+
+    @Test
+    void enemyPowerTankBulletUsesNormalSpeed() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addEnemyForTest(Tank.enemy(EnemyType.POWER, world.tileToWorldX(1), world.tileToWorldY(0)));
+
+        world.update(0.01f, InputCommand.none());
+
+        Bullet enemyBullet = world.bullets().stream().filter(bullet -> !bullet.fromPlayer()).findFirst().orElseThrow();
+        assertEquals(GameConfig.BULLET_SPEED, enemyBullet.speed(), 0.001f);
+        assertTrue(enemyBullet.powerShot());
+    }
+
+    @Test
+    void levelClearDoesNotAutoAdvanceTooQuickly() {
+        LevelDefinition one = levelWithRows("One",
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        LevelDefinition two = levelWithRows("Two",
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        GameWorld world = new GameWorld(List.of(one, two), new Random(3));
+        world.startNewGame();
+
+        world.update(0.1f, InputCommand.none());
+        assertEquals(GameStatus.LEVEL_CLEAR, world.status());
+        for (int i = 0; i < 40; i++) {
+            world.update(0.1f, InputCommand.none());
+        }
+
+        assertEquals(0, world.levelIndex());
+        assertEquals(GameStatus.LEVEL_CLEAR, world.status());
     }
 
     @Test
@@ -248,6 +350,24 @@ class GameWorldTest {
                 """.formatted(name, rows[0].length(), rows.length, rows.length - 1, rows.length - 1, tiles));
     }
 
+    private static LevelDefinition protectedBaseLevel() {
+        return LevelLoader.load("""
+                {
+                  "name": "Protected Base",
+                  "width": 5,
+                  "height": 4,
+                  "player": { "x": 1, "y": 3 },
+                  "base": { "x": 2, "y": 3 },
+                  "tiles": [
+                    ".....",
+                    ".....",
+                    ".BBB.",
+                    ".B.B."
+                  ]
+                }
+                """);
+    }
+
     private static final class AlwaysDropRandom extends Random {
         @Override
         public float nextFloat() {
@@ -257,6 +377,18 @@ class GameWorldTest {
         @Override
         public int nextInt(int bound) {
             return 0;
+        }
+    }
+
+    private static final class LastDropRandom extends Random {
+        @Override
+        public float nextFloat() {
+            return 0f;
+        }
+
+        @Override
+        public int nextInt(int bound) {
+            return bound - 1;
         }
     }
 }
