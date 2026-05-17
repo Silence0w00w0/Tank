@@ -19,3 +19,54 @@ tasks.named('run') {
     workingDir = rootProject.file('assets')
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
+
+def portableName = 'Tank-Windows-Portable'
+def portableDir = layout.buildDirectory.dir("portable/${portableName}")
+def portableRuntimeDir = layout.buildDirectory.dir('portable-runtime/runtime')
+def portableZip = layout.buildDirectory.file("distributions/${portableName}.zip")
+
+tasks.register('portableRuntime', Exec) {
+    group = 'distribution'
+    description = 'Builds a minimal Java runtime for the Windows portable package.'
+    inputs.property('modules', 'java.base,java.desktop,java.logging,jdk.unsupported')
+    outputs.dir(portableRuntimeDir)
+    doFirst {
+        delete portableRuntimeDir.get().asFile
+    }
+    commandLine 'jlink',
+            '--strip-debug',
+            '--no-header-files',
+            '--no-man-pages',
+            '--compress', 'zip-6',
+            '--add-modules', 'java.base,java.desktop,java.logging,jdk.unsupported',
+            '--output', portableRuntimeDir.get().asFile.absolutePath
+}
+
+tasks.register('preparePortablePackage', Sync) {
+    group = 'distribution'
+    description = 'Assembles the portable game folder with app files, assets, runtime, and launcher scripts.'
+    dependsOn tasks.named('installDist'), tasks.named('portableRuntime')
+    into portableDir
+
+    from(layout.buildDirectory.dir('install/lwjgl3')) {
+        into 'app'
+    }
+    from(rootProject.file('assets')) {
+        into 'assets'
+    }
+    from(portableRuntimeDir) {
+        into 'runtime'
+    }
+    from('src/portable') {
+        filteringCharset = 'UTF-8'
+    }
+}
+
+tasks.register('packagePortable', Zip) {
+    group = 'distribution'
+    description = 'Creates a Windows portable ZIP that does not require Java or project source on the target computer.'
+    dependsOn tasks.named('preparePortablePackage')
+    archiveFileName = "${portableName}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from portableDir
+}

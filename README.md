@@ -33,6 +33,27 @@
 .\gradlew.bat lwjgl3:run --args="--connect 主机IP --port 54556"
 ```
 
+## 免 Java 便携包
+
+生成 Windows 便携版：
+
+```powershell
+.\gradlew.bat lwjgl3:packagePortable
+```
+
+产物：
+
+```text
+lwjgl3\build\distributions\Tank-Windows-Portable.zip
+```
+
+把这个 ZIP 发给另一台 Windows 电脑。对方解压后不需要源码、Gradle、IDEA 或已安装 Java：
+
+- 单机：双击 `Tank-Single.bat`
+- 主机：双击 `Tank-Host.bat`
+- 客户端：运行 `Tank-Client.bat 主机IP`
+- 自定义端口：`Tank-Host.bat --port 54556`，客户端运行 `Tank-Client.bat 主机IP --port 54556`
+
 ## 控制
 
 - `WASD` 或方向键：移动
