@@ -27,7 +27,6 @@ public final class GameWorld {
     private boolean baseAlive = true;
     private float baseShieldTimer;
     private float levelElapsedSeconds;
-    private float levelAdvanceTimer;
 
     public GameWorld(List<LevelDefinition> levels, Random random) {
         this(levels, random, 1);
@@ -76,8 +75,7 @@ public final class GameWorld {
             return;
         }
         if (status == GameStatus.LEVEL_CLEAR) {
-            levelAdvanceTimer -= delta;
-            if (levelAdvanceTimer <= 0f || anyStartOrFire(commands)) {
+            if (anyStart(commands)) {
                 advanceLevel();
             }
             return;
@@ -195,6 +193,10 @@ public final class GameWorld {
 
     private boolean anyStartOrFire(List<InputCommand> commands) {
         return commands != null && commands.stream().anyMatch(command -> command.start() || command.fire());
+    }
+
+    private boolean anyStart(List<InputCommand> commands) {
+        return commands != null && commands.stream().anyMatch(InputCommand::start);
     }
 
     private void tickEnemies(float delta) {
@@ -428,6 +430,11 @@ public final class GameWorld {
         for (GridCoord coord : overlappingTiles(bullet.bounds())) {
             TileType tile = tiles[coord.y()][coord.x()];
             if (tile.blocksBullet(bullet.powerShot())) {
+                if (baseShielded() && isBaseProtectionWall(coord)) {
+                    bullet.destroy();
+                    explosions.add(new Explosion(tileToWorldX(coord.x()), tileToWorldY(coord.y())));
+                    return;
+                }
                 if (tile == TileType.BRICK || (tile == TileType.STEEL && bullet.powerShot())) {
                     tiles[coord.y()][coord.x()] = TileType.EMPTY;
                     explosions.add(new Explosion(tileToWorldX(coord.x()), tileToWorldY(coord.y())));
@@ -441,14 +448,10 @@ public final class GameWorld {
     private void resolveBulletEntityHit(Bullet bullet) {
         if (baseAlive && bullet.bounds().overlaps(baseBounds())) {
             bullet.destroy();
-            if (baseShielded()) {
-                explosions.add(new Explosion(baseBounds().x, baseBounds().y));
-            } else {
-                baseAlive = false;
-                explosions.add(new Explosion(baseBounds().x, baseBounds().y));
-                status = GameStatus.GAME_OVER;
-                highScore = Math.max(highScore, score);
-            }
+            baseAlive = false;
+            explosions.add(new Explosion(baseBounds().x, baseBounds().y));
+            status = GameStatus.GAME_OVER;
+            highScore = Math.max(highScore, score);
             return;
         }
 
@@ -597,6 +600,17 @@ public final class GameWorld {
         );
     }
 
+    private boolean isBaseProtectionWall(GridCoord coord) {
+        TileType tile = tiles[coord.y()][coord.x()];
+        if (tile != TileType.BRICK && tile != TileType.STEEL) {
+            return false;
+        }
+        GridCoord base = level.basePosition();
+        int dx = coord.x() - base.x();
+        int dy = coord.y() - base.y();
+        return (dy == -1 && Math.abs(dx) <= 1) || (dy == 0 && Math.abs(dx) == 1);
+    }
+
     private void tickBaseShield(float delta) {
         baseShieldTimer = Math.max(0f, baseShieldTimer - delta);
     }
@@ -647,7 +661,6 @@ public final class GameWorld {
         boolean wavesDone = waves.stream().allMatch(WaveRuntime::finished);
         if (wavesDone && enemies.isEmpty()) {
             status = GameStatus.LEVEL_CLEAR;
-            levelAdvanceTimer = GameConfig.LEVEL_ADVANCE_SECONDS;
             highScore = Math.max(highScore, score);
         }
     }

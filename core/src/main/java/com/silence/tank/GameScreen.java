@@ -133,9 +133,26 @@ public final class GameScreen extends ScreenAdapter {
                 }
                 if (tile.region != null) {
                     batch.draw(region(tile.region), world.tileToWorldX(x), world.tileToWorldY(y), GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
+                    if (!grassOnly && world.baseShielded() && isBaseProtectionWall(x, y)) {
+                        Color old = batch.getColor();
+                        batch.setColor(0.55f, 0.85f, 1f, 0.62f);
+                        batch.draw(region(AssetKeys.POWER_SHIELD), world.tileToWorldX(x), world.tileToWorldY(y), GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
+                        batch.setColor(old);
+                    }
                 }
             }
         }
+    }
+
+    private boolean isBaseProtectionWall(int x, int y) {
+        TileType tile = world.tileAt(x, y);
+        if (tile != TileType.BRICK && tile != TileType.STEEL) {
+            return false;
+        }
+        GridCoord base = world.level().basePosition();
+        int dx = x - base.x();
+        int dy = y - base.y();
+        return (dy == -1 && Math.abs(dx) <= 1) || (dy == 0 && Math.abs(dx) == 1);
     }
 
     private void drawBase() {
@@ -144,12 +161,6 @@ public final class GameScreen extends ScreenAdapter {
         }
         Rectangle base = world.baseBounds();
         batch.draw(region(AssetKeys.BASE), base.x, base.y, base.width, base.height);
-        if (world.baseShielded()) {
-            Color old = batch.getColor();
-            batch.setColor(0.55f, 0.85f, 1f, 0.62f);
-            batch.draw(region(AssetKeys.POWER_SHIELD), base.x, base.y, base.width, base.height);
-            batch.setColor(old);
-        }
     }
 
     private void drawPowerUps() {
@@ -243,7 +254,7 @@ public final class GameScreen extends ScreenAdapter {
         switch (world.status()) {
             case MENU -> drawCentered("TANK", menuSubtitle());
             case PAUSED -> drawCentered("PAUSED", "Press P to continue");
-            case LEVEL_CLEAR -> drawCentered("LEVEL CLEAR", "Press ENTER or wait for next level");
+            case LEVEL_CLEAR -> drawCentered("LEVEL CLEAR", "Press ENTER for next level");
             case GAME_OVER -> drawCentered("GAME OVER", "Press R or ENTER to restart");
             case VICTORY -> drawCentered("VICTORY", "Press R or ENTER to play again");
             default -> {

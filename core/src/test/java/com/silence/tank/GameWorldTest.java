@@ -72,13 +72,9 @@ class GameWorldTest {
     }
 
     @Test
-    void respawnGrantsPlayerAndBaseInvincibility() {
-        GameWorld world = worldWithRows(
-                "....",
-                "....",
-                "....",
-                "...."
-        );
+    void respawnShieldsPlayerAndBaseProtectionWalls() {
+        GameWorld world = new GameWorld(List.of(protectedBaseLevel()), new Random(8));
+        world.startNewGame();
         world.addEnemyForTest(Tank.enemy(EnemyType.ARMORED, world.tileToWorldX(3), world.tileToWorldY(0)));
         world.setBaseShieldTimerForTest(0f);
         world.player().shieldTimer(0f);
@@ -90,11 +86,28 @@ class GameWorldTest {
         assertTrue(world.player().hasShield());
         assertTrue(world.baseShielded());
 
-        world.addBulletForTest(new Bullet(true, false, world.baseBounds().x + 12f, world.baseBounds().y + 12f, Direction.UP));
-        world.update(0.01f, InputCommand.none());
+        GridCoord base = world.level().basePosition();
+        int wallX = base.x();
+        int wallY = base.y() - 1;
+        world.addBulletForTest(new Bullet(true, false, world.tileToWorldX(wallX) + 12f, world.tileToWorldY(wallY) - 2f, Direction.UP));
+        world.update(0.05f, InputCommand.none());
 
         assertTrue(world.baseAlive());
         assertEquals(GameStatus.PLAYING, world.status());
+        assertEquals(TileType.BRICK, world.tileAt(wallX, wallY));
+    }
+
+    @Test
+    void baseWallShieldDoesNotProtectBaseItself() {
+        GameWorld world = new GameWorld(List.of(protectedBaseLevel()), new Random(8));
+        world.startNewGame();
+        assertTrue(world.baseShielded());
+
+        world.addBulletForTest(new Bullet(false, false, world.baseBounds().x + 12f, world.baseBounds().y + 12f, Direction.DOWN));
+        world.update(0.01f, InputCommand.none());
+
+        assertEquals(GameStatus.GAME_OVER, world.status());
+        assertTrue(!world.baseAlive());
     }
 
     @Test
@@ -185,7 +198,7 @@ class GameWorldTest {
     }
 
     @Test
-    void levelClearDoesNotAutoAdvanceTooQuickly() {
+    void levelClearRequiresEnterToAdvance() {
         LevelDefinition one = levelWithRows("One",
                 "....",
                 "....",
@@ -203,12 +216,18 @@ class GameWorldTest {
 
         world.update(0.1f, InputCommand.none());
         assertEquals(GameStatus.LEVEL_CLEAR, world.status());
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 100; i++) {
             world.update(0.1f, InputCommand.none());
         }
+        world.update(0.01f, InputCommand.none().fire(true));
 
         assertEquals(0, world.levelIndex());
         assertEquals(GameStatus.LEVEL_CLEAR, world.status());
+
+        world.update(0.01f, InputCommand.none().start(true));
+
+        assertEquals(1, world.levelIndex());
+        assertEquals(GameStatus.PLAYING, world.status());
     }
 
     @Test
@@ -356,7 +375,7 @@ class GameWorldTest {
                   "name": "Protected Base",
                   "width": 5,
                   "height": 4,
-                  "player": { "x": 1, "y": 3 },
+                  "player": { "x": 0, "y": 3 },
                   "base": { "x": 2, "y": 3 },
                   "tiles": [
                     ".....",

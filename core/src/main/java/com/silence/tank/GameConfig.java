@@ -32,7 +32,6 @@ public final class GameConfig {
     public static final float ENEMY_SPAWN_END_MULTIPLIER = 0.65f;
     public static final int INITIAL_LIVES = 3;
     public static final int MAX_ENEMIES_ON_FIELD = 5;
-    public static final float LEVEL_ADVANCE_SECONDS = 5f;
 
     private GameConfig() {
     }
