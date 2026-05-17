@@ -26,8 +26,12 @@ public final class LevelLoader {
 
         TileType[][] tiles = readTiles(root.require("tiles"), width, height);
         GridCoord playerSpawn = readCoord(root.require("player"));
+        List<GridCoord> playerSpawns = readPlayerSpawns(root, playerSpawn);
         GridCoord base = readCoord(root.require("base"));
         validateCoord(playerSpawn, width, height, "player");
+        for (GridCoord spawn : playerSpawns) {
+            validateCoord(spawn, width, height, "player");
+        }
         validateCoord(base, width, height, "base");
 
         List<EnemyWave> waves = new ArrayList<>();
@@ -58,7 +62,19 @@ public final class LevelLoader {
             }
         }
 
-        return new LevelDefinition(name, width, height, tiles, playerSpawn, base, waves, powerUps);
+        return new LevelDefinition(name, width, height, tiles, playerSpawn, playerSpawns, base, waves, powerUps);
+    }
+
+    private static List<GridCoord> readPlayerSpawns(JsonValue root, GridCoord fallback) {
+        JsonValue playersNode = root.get("players");
+        if (playersNode == null) {
+            return List.of(fallback);
+        }
+        List<GridCoord> spawns = new ArrayList<>();
+        for (JsonValue player = playersNode.child; player != null; player = player.next) {
+            spawns.add(readCoord(player));
+        }
+        return spawns.isEmpty() ? List.of(fallback) : spawns;
     }
 
     private static TileType[][] readTiles(JsonValue rows, int width, int height) {

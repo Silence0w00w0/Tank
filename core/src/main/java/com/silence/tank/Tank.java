@@ -34,6 +34,25 @@ public final class Tank {
         return new Tank(false, type, x, y, type.health, 0);
     }
 
+    public static Tank restoredPlayer(float x, float y, Direction direction, int health, int lives, float fireCooldown, float shieldTimer, float speedTimer, float powerShotTimer, boolean alive) {
+        Tank tank = new Tank(true, null, x, y, health, lives);
+        tank.direction = direction;
+        tank.fireCooldown = fireCooldown;
+        tank.shieldTimer = shieldTimer;
+        tank.speedTimer = speedTimer;
+        tank.powerShotTimer = powerShotTimer;
+        tank.alive = alive;
+        return tank;
+    }
+
+    public static Tank restoredEnemy(EnemyType type, float x, float y, Direction direction, int health, float fireCooldown, boolean alive) {
+        Tank tank = new Tank(false, type, x, y, health, 0);
+        tank.direction = direction;
+        tank.fireCooldown = fireCooldown;
+        tank.alive = alive;
+        return tank;
+    }
+
     public Rectangle bounds() {
         return new Rectangle(x + 3f, y + 3f, GameConfig.TILE_SIZE - 6f, GameConfig.TILE_SIZE - 6f);
     }
@@ -160,5 +179,10 @@ public final class Tank {
     public void revive() {
         this.alive = true;
         this.health = player ? 1 : enemyType.health;
+    }
+
+    public void eliminate() {
+        this.alive = false;
+        this.health = 0;
     }
 }

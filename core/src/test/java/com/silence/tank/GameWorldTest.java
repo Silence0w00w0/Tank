@@ -90,6 +90,40 @@ class GameWorldTest {
     }
 
     @Test
+    void twoPlayerWorldKeepsSeparateLivesAndSnapshotState() {
+        LevelDefinition level = LevelLoader.load("""
+                {
+                  "name": "Two Player",
+                  "width": 5,
+                  "height": 4,
+                  "player": { "x": 1, "y": 3 },
+                  "players": [
+                    { "x": 1, "y": 3 },
+                    { "x": 3, "y": 3 }
+                  ],
+                  "base": { "x": 2, "y": 2 },
+                  "tiles": [
+                    ".....",
+                    ".BBB.",
+                    ".B.B.",
+                    ".BBB."
+                  ]
+                }
+                """);
+        GameWorld hostWorld = new GameWorld(List.of(level), new Random(4), 2);
+        hostWorld.startNewGame();
+        hostWorld.update(0.1f, List.of(InputCommand.none(), InputCommand.none().move(Direction.LEFT)));
+
+        GameSnapshot snapshot = GameSnapshot.from(hostWorld);
+        GameWorld clientWorld = new GameWorld(List.of(level), new Random(5), 2);
+        clientWorld.applySnapshot(snapshot);
+
+        assertEquals(2, clientWorld.players().size());
+        assertEquals(hostWorld.players().get(1).x(), clientWorld.players().get(1).x(), 0.001f);
+        assertEquals(TileType.BRICK, clientWorld.tileAt(1, 1));
+    }
+
+    @Test
     void emptyLevelsAdvanceToVictory() {
         LevelDefinition one = levelWithRows("One",
                 "....",

@@ -8,6 +8,7 @@ public final class LevelDefinition {
     private final int height;
     private final TileType[][] tiles;
     private final GridCoord playerSpawn;
+    private final List<GridCoord> playerSpawns;
     private final GridCoord basePosition;
     private final List<EnemyWave> waves;
     private final List<PowerUpSpawn> powerUps;
@@ -18,6 +19,7 @@ public final class LevelDefinition {
             int height,
             TileType[][] tiles,
             GridCoord playerSpawn,
+            List<GridCoord> playerSpawns,
             GridCoord basePosition,
             List<EnemyWave> waves,
             List<PowerUpSpawn> powerUps
@@ -27,6 +29,7 @@ public final class LevelDefinition {
         this.height = height;
         this.tiles = copyTiles(tiles, width, height);
         this.playerSpawn = playerSpawn;
+        this.playerSpawns = List.copyOf(playerSpawns == null || playerSpawns.isEmpty() ? List.of(playerSpawn) : playerSpawns);
         this.basePosition = basePosition;
         this.waves = List.copyOf(waves);
         this.powerUps = List.copyOf(powerUps);
@@ -54,6 +57,14 @@ public final class LevelDefinition {
 
     public GridCoord playerSpawn() {
         return playerSpawn;
+    }
+
+    public GridCoord playerSpawn(int playerIndex) {
+        return playerSpawns.get(Math.min(playerIndex, playerSpawns.size() - 1));
+    }
+
+    public List<GridCoord> playerSpawns() {
+        return playerSpawns;
     }
 
     public GridCoord basePosition() {

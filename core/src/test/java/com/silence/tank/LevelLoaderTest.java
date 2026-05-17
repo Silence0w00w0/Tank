@@ -15,6 +15,10 @@ class LevelLoaderTest {
                   "height": 3,
                   "player": { "x": 1, "y": 2 },
                   "base": { "x": 2, "y": 2 },
+                  "players": [
+                    { "x": 1, "y": 2 },
+                    { "x": 0, "y": 2 }
+                  ],
                   "tiles": [
                     ".BSW",
                     "GII.",
@@ -37,6 +41,7 @@ class LevelLoaderTest {
         assertEquals("Test", level.name());
         assertEquals(TileType.BRICK, level.tileAt(1, 0));
         assertEquals(TileType.GRASS, level.tileAt(0, 1));
+        assertEquals(new GridCoord(0, 2), level.playerSpawn(1));
         assertEquals(EnemyType.ARMORED, level.waves().get(0).type());
         assertEquals(PowerUpType.SHIELD, level.powerUps().get(0).type());
     }

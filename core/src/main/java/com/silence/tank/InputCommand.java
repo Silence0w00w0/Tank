@@ -1,6 +1,12 @@
 package com.silence.tank;
 
-public final class InputCommand {
+import java.io.Serial;
+import java.io.Serializable;
+
+public final class InputCommand implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private Direction moveDirection;
     private boolean fire;
     private boolean pause;
@@ -54,5 +60,14 @@ public final class InputCommand {
     public InputCommand start(boolean start) {
         this.start = start;
         return this;
+    }
+
+    public InputCommand copy() {
+        return new InputCommand()
+                .move(moveDirection)
+                .fire(fire)
+                .pause(pause)
+                .restart(restart)
+                .start(start);
     }
 }

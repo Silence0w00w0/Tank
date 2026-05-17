@@ -20,6 +20,8 @@ class AssetValidationTest {
             assertEquals(GameConfig.MAP_HEIGHT, level.height());
             assertTrue(!level.waves().isEmpty());
             assertTrue(!level.powerUps().isEmpty());
+            assertTrue(level.playerSpawns().size() >= 2);
+            assertBaseIsProtected(level);
         }
     }
 
@@ -64,5 +66,17 @@ class AssetValidationTest {
             return rootAssets;
         }
         return new File("../assets");
+    }
+
+    private static void assertBaseIsProtected(LevelDefinition level) {
+        GridCoord base = level.basePosition();
+        for (int y = base.y() - 1; y <= base.y() + 1; y++) {
+            for (int x = base.x() - 1; x <= base.x() + 1; x++) {
+                if (x == base.x() && y == base.y()) {
+                    continue;
+                }
+                assertEquals(TileType.BRICK, level.tileAt(x, y));
+            }
+        }
     }
 }

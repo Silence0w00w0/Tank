@@ -15,6 +15,8 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.silence.tank.net.ClientNetworkSession;
+import com.silence.tank.net.HostNetworkSession;
 
 import java.util.List;
 import java.util.Random;
@@ -32,8 +34,16 @@ public final class GameScreen extends ScreenAdapter {
     private final TextureAtlas atlas;
     private final Preferences preferences;
     private final GameWorld world;
+    private final LaunchOptions launchOptions;
+    private final HostNetworkSession hostSession;
+    private final ClientNetworkSession clientSession;
 
     public GameScreen() {
+        this(LaunchOptions.local());
+    }
+
+    public GameScreen(LaunchOptions launchOptions) {
+        this.launchOptions = launchOptions;
         atlas = new TextureAtlas(Gdx.files.internal(AssetKeys.ATLAS));
         preferences = Gdx.app.getPreferences(PREFS_NAME);
         List<LevelDefinition> levels = List.of(
@@ -41,8 +51,10 @@ public final class GameScreen extends ScreenAdapter {
                 LevelLoader.load(Gdx.files.internal("levels/level2.json")),
                 LevelLoader.load(Gdx.files.internal("levels/level3.json"))
         );
-        world = new GameWorld(levels, new Random());
+        world = new GameWorld(levels, new Random(), launchOptions.multiplayer() ? 2 : 1);
         world.highScore(preferences.getInteger(PREF_HIGH_SCORE, 0));
+        hostSession = launchOptions.mode() == GameMode.HOST ? new HostNetworkSession(launchOptions.port()) : null;
+        clientSession = launchOptions.mode() == GameMode.CLIENT ? new ClientNetworkSession(launchOptions.host(), launchOptions.port()) : null;
         font.getData().setScale(1.18f);
         font.setUseIntegerPositions(false);
     }
@@ -50,8 +62,20 @@ public final class GameScreen extends ScreenAdapter {
     @Override
     public void render(float delta) {
         InputCommand command = readInput();
-        world.update(delta, command);
-        persistProgress();
+        if (launchOptions.mode() == GameMode.CLIENT) {
+            clientSession.sendInput(command);
+            GameSnapshot snapshot = clientSession.latestSnapshot();
+            if (snapshot != null) {
+                world.applySnapshot(snapshot);
+            }
+        } else if (launchOptions.mode() == GameMode.HOST) {
+            world.update(delta, List.of(command, hostSession.remoteInput()));
+            hostSession.sendSnapshot(GameSnapshot.from(world));
+            persistProgress();
+        } else {
+            world.update(delta, command);
+            persistProgress();
+        }
 
         ScreenUtils.clear(0.025f, 0.028f, 0.032f, 1f);
         viewport.apply();
@@ -131,14 +155,23 @@ public final class GameScreen extends ScreenAdapter {
     }
 
     private void drawTanks() {
-        drawTank(world.player());
+        for (int i = 0; i < world.players().size(); i++) {
+            drawTank(world.players().get(i), i);
+        }
         for (Tank enemy : world.enemies()) {
-            drawTank(enemy);
+            drawTank(enemy, -1);
         }
     }
 
-    private void drawTank(Tank tank) {
+    private void drawTank(Tank tank, int playerIndex) {
+        if (!tank.alive()) {
+            return;
+        }
         TextureRegion texture = region(tank.region());
+        Color old = batch.getColor();
+        if (playerIndex == 1) {
+            batch.setColor(0.62f, 0.9f, 1f, 1f);
+        }
         batch.draw(
                 texture,
                 tank.x(),
@@ -151,8 +184,9 @@ public final class GameScreen extends ScreenAdapter {
                 1f,
                 tank.direction().rotation
         );
+        batch.setColor(old);
         if (tank.hasShield()) {
-            Color old = batch.getColor();
+            old = batch.getColor();
             batch.setColor(0.55f, 0.85f, 1f, 0.6f);
             batch.draw(region(AssetKeys.POWER_SHIELD), tank.x(), tank.y(), GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
             batch.setColor(old);
@@ -178,15 +212,25 @@ public final class GameScreen extends ScreenAdapter {
         font.draw(batch, "LEVEL " + (world.levelIndex() + 1) + "  " + world.level().name(), 12f, y);
         font.draw(batch, "SCORE " + world.score(), 330f, y);
         font.draw(batch, "HIGH " + world.highScore(), 520f, y);
-        font.draw(batch, "LIVES " + world.player().lives(), 700f, y);
+        String lives = world.players().size() > 1
+                ? "P1 " + world.players().get(0).lives() + "  P2 " + world.players().get(1).lives()
+                : "LIVES " + world.player().lives();
+        font.draw(batch, lives, 700f, y);
 
         font.setColor(0.75f, 0.82f, 0.86f, 1f);
         font.draw(batch, "WASD/ARROWS MOVE   SPACE/J FIRE   P PAUSE   R RESTART", 12f, GameConfig.ARENA_HEIGHT + 24f);
+        if (launchOptions.mode() != GameMode.LOCAL) {
+            font.draw(batch, networkStatus(), 560f, GameConfig.ARENA_HEIGHT + 24f);
+        }
     }
 
     private void drawStatusOverlay() {
+        if (launchOptions.mode() == GameMode.CLIENT && clientSession.latestSnapshot() == null) {
+            drawCentered("CONNECTING", clientSession.status());
+            return;
+        }
         switch (world.status()) {
-            case MENU -> drawCentered("TANK", "Press ENTER or SPACE to start");
+            case MENU -> drawCentered("TANK", menuSubtitle());
             case PAUSED -> drawCentered("PAUSED", "Press P to continue");
             case LEVEL_CLEAR -> drawCentered("LEVEL CLEAR", "Press ENTER or wait for next level");
             case GAME_OVER -> drawCentered("GAME OVER", "Press R or ENTER to restart");
@@ -194,6 +238,24 @@ public final class GameScreen extends ScreenAdapter {
             default -> {
             }
         }
+    }
+
+    private String menuSubtitle() {
+        return switch (launchOptions.mode()) {
+            case HOST -> "P1 host: press ENTER after client joins";
+            case CLIENT -> "P2 client: press ENTER when host is ready";
+            case LOCAL -> "Press ENTER or SPACE to start";
+        };
+    }
+
+    private String networkStatus() {
+        if (hostSession != null) {
+            return hostSession.status();
+        }
+        if (clientSession != null) {
+            return clientSession.status();
+        }
+        return "";
     }
 
     private void drawCentered(String title, String subtitle) {
@@ -239,6 +301,12 @@ public final class GameScreen extends ScreenAdapter {
 
     @Override
     public void dispose() {
+        if (hostSession != null) {
+            hostSession.close();
+        }
+        if (clientSession != null) {
+            clientSession.close();
+        }
         batch.dispose();
         shapes.dispose();
         font.dispose();

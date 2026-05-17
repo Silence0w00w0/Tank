@@ -10,6 +10,8 @@ import java.util.Random;
 public final class GameWorld {
     private final List<LevelDefinition> levels;
     private final Random random;
+    private final int playerCount;
+    private final List<Tank> players = new ArrayList<>();
     private final List<Tank> enemies = new ArrayList<>();
     private final List<Bullet> bullets = new ArrayList<>();
     private final List<PowerUp> powerUps = new ArrayList<>();
@@ -18,7 +20,6 @@ public final class GameWorld {
 
     private LevelDefinition level;
     private TileType[][] tiles;
-    private Tank player;
     private GameStatus status = GameStatus.MENU;
     private int levelIndex;
     private int score;
@@ -27,52 +28,64 @@ public final class GameWorld {
     private float levelAdvanceTimer;
 
     public GameWorld(List<LevelDefinition> levels, Random random) {
+        this(levels, random, 1);
+    }
+
+    public GameWorld(List<LevelDefinition> levels, Random random, int playerCount) {
         if (levels == null || levels.isEmpty()) {
             throw new IllegalArgumentException("At least one level is required.");
         }
+        if (playerCount < 1 || playerCount > 2) {
+            throw new IllegalArgumentException("Supported player count is 1 or 2.");
+        }
         this.levels = List.copyOf(levels);
         this.random = random;
+        this.playerCount = playerCount;
         startNewGame();
         status = GameStatus.MENU;
     }
 
     public void update(float delta, InputCommand command) {
+        update(delta, List.of(command));
+    }
+
+    public void update(float delta, List<InputCommand> commands) {
         delta = Math.min(delta, 1f / 20f);
-        if (command.restart()) {
+        if (anyRestart(commands)) {
             startNewGame();
             return;
         }
         if (status == GameStatus.MENU) {
-            if (command.start() || command.fire()) {
+            if (anyStartOrFire(commands)) {
                 status = GameStatus.PLAYING;
             }
             return;
         }
         if (status == GameStatus.PAUSED) {
-            if (command.pause()) {
+            if (anyPause(commands)) {
                 status = GameStatus.PLAYING;
             }
             return;
         }
         if (status == GameStatus.GAME_OVER || status == GameStatus.VICTORY) {
-            if (command.start() || command.fire()) {
+            if (anyStartOrFire(commands)) {
                 startNewGame();
             }
             return;
         }
         if (status == GameStatus.LEVEL_CLEAR) {
             levelAdvanceTimer -= delta;
-            if (levelAdvanceTimer <= 0f || command.start() || command.fire()) {
+            if (levelAdvanceTimer <= 0f || anyStartOrFire(commands)) {
                 advanceLevel();
             }
             return;
         }
-        if (command.pause()) {
+        if (anyPause(commands)) {
             status = GameStatus.PAUSED;
             return;
         }
 
-        tickPlayer(delta, command);
+        tickPlayers(delta, commands);
         tickEnemies(delta);
         spawnEnemies(delta);
         tickBullets(delta);
@@ -90,18 +103,32 @@ public final class GameWorld {
     }
 
     public void loadLevel(int index, int lives) {
+        int[] playerLives = new int[playerCount];
+        for (int i = 0; i < playerLives.length; i++) {
+            playerLives[i] = lives;
+        }
+        loadLevel(index, playerLives);
+    }
+
+    public void loadLevel(int index, int[] playerLives) {
         levelIndex = index;
         level = levels.get(index);
         tiles = level.copyTiles();
         baseAlive = true;
+        players.clear();
         enemies.clear();
         bullets.clear();
         powerUps.clear();
         explosions.clear();
         waves.clear();
-        player = Tank.player(tileToWorldX(level.playerSpawn().x()), tileToWorldY(level.playerSpawn().y()), lives);
-        player.direction(Direction.UP);
-        player.shieldTimer(GameConfig.RESPAWN_SHIELD_SECONDS);
+        for (int i = 0; i < playerCount; i++) {
+            GridCoord spawn = level.playerSpawn(i);
+            int lives = i < playerLives.length ? playerLives[i] : GameConfig.INITIAL_LIVES;
+            Tank player = Tank.player(tileToWorldX(spawn.x()), tileToWorldY(spawn.y()), lives);
+            player.direction(Direction.UP);
+            player.shieldTimer(GameConfig.RESPAWN_SHIELD_SECONDS);
+            players.add(player);
+        }
         for (EnemyWave wave : level.waves()) {
             waves.add(new WaveRuntime(wave));
         }
@@ -117,10 +144,19 @@ public final class GameWorld {
             highScore = Math.max(highScore, score);
             return;
         }
-        loadLevel(levelIndex + 1, player.lives());
+        loadLevel(levelIndex + 1, playerLives());
     }
 
-    private void tickPlayer(float delta, InputCommand command) {
+    private void tickPlayers(float delta, List<InputCommand> commands) {
+        for (int i = 0; i < players.size(); i++) {
+            tickPlayer(players.get(i), delta, commandAt(commands, i));
+        }
+    }
+
+    private void tickPlayer(Tank player, float delta, InputCommand command) {
+        if (!player.alive()) {
+            return;
+        }
         tickTankTimers(player, delta);
         if (command.moveDirection() != null) {
             moveTank(player, command.moveDirection(), delta);
@@ -128,6 +164,33 @@ public final class GameWorld {
         if (command.fire()) {
             fire(player);
         }
+    }
+
+    private int[] playerLives() {
+        int[] lives = new int[players.size()];
+        for (int i = 0; i < players.size(); i++) {
+            lives[i] = players.get(i).lives();
+        }
+        return lives;
+    }
+
+    private InputCommand commandAt(List<InputCommand> commands, int index) {
+        if (commands == null || index >= commands.size() || commands.get(index) == null) {
+            return InputCommand.none();
+        }
+        return commands.get(index);
+    }
+
+    private boolean anyRestart(List<InputCommand> commands) {
+        return commands != null && commands.stream().anyMatch(InputCommand::restart);
+    }
+
+    private boolean anyPause(List<InputCommand> commands) {
+        return commands != null && commands.stream().anyMatch(InputCommand::pause);
+    }
+
+    private boolean anyStartOrFire(List<InputCommand> commands) {
+        return commands != null && commands.stream().anyMatch(command -> command.start() || command.fire());
     }
 
     private void tickEnemies(float delta) {
@@ -169,9 +232,14 @@ public final class GameWorld {
     }
 
     private Direction directionToVisibleTarget(Tank enemy) {
-        Direction toPlayer = directionIfVisible(enemy, player.bounds());
-        if (toPlayer != null) {
-            return toPlayer;
+        for (Tank player : players) {
+            if (!player.alive()) {
+                continue;
+            }
+            Direction toPlayer = directionIfVisible(enemy, player.bounds());
+            if (toPlayer != null) {
+                return toPlayer;
+            }
         }
         if (baseAlive) {
             return directionIfVisible(enemy, baseBounds());
@@ -279,7 +347,12 @@ public final class GameWorld {
                 return false;
             }
         }
-        return mover.isPlayer() || !bounds.overlaps(player.bounds());
+        for (Tank player : players) {
+            if (player != mover && player.alive() && bounds.overlaps(player.bounds())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private TileType tileUnder(Tank tank) {
@@ -359,13 +432,18 @@ public final class GameWorld {
                     return;
                 }
             }
-        } else if (bullet.bounds().overlaps(player.bounds())) {
-            bullet.destroy();
-            damagePlayer();
+        } else {
+            for (Tank player : players) {
+                if (player.alive() && bullet.bounds().overlaps(player.bounds())) {
+                    bullet.destroy();
+                    damagePlayer(player);
+                    return;
+                }
+            }
         }
     }
 
-    private void damagePlayer() {
+    private void damagePlayer(Tank player) {
         if (player.hasShield()) {
             explosions.add(new Explosion(player.x(), player.y()));
             return;
@@ -374,27 +452,38 @@ public final class GameWorld {
         player.lives(lives);
         explosions.add(new Explosion(player.x(), player.y()));
         if (lives <= 0) {
-            status = GameStatus.GAME_OVER;
-            highScore = Math.max(highScore, score);
+            player.eliminate();
+            if (players.stream().noneMatch(Tank::alive)) {
+                status = GameStatus.GAME_OVER;
+                highScore = Math.max(highScore, score);
+            }
             return;
         }
         player.revive();
-        player.setPosition(tileToWorldX(level.playerSpawn().x()), tileToWorldY(level.playerSpawn().y()));
+        int playerIndex = players.indexOf(player);
+        GridCoord spawn = level.playerSpawn(Math.max(0, playerIndex));
+        player.setPosition(tileToWorldX(spawn.x()), tileToWorldY(spawn.y()));
         player.direction(Direction.UP);
         player.shieldTimer(GameConfig.RESPAWN_SHIELD_SECONDS);
     }
 
     private void collectPowerUps() {
         for (PowerUp powerUp : powerUps) {
-            if (powerUp.active() && player.bounds().overlaps(powerUp.bounds())) {
-                applyPowerUp(powerUp.type());
-                powerUp.consume();
-                score += 50;
+            if (!powerUp.active()) {
+                continue;
+            }
+            for (Tank player : players) {
+                if (player.alive() && player.bounds().overlaps(powerUp.bounds())) {
+                    applyPowerUp(player, powerUp.type());
+                    powerUp.consume();
+                    score += 50;
+                    break;
+                }
             }
         }
     }
 
-    private void applyPowerUp(PowerUpType type) {
+    private void applyPowerUp(Tank player, PowerUpType type) {
         switch (type) {
             case SHIELD -> player.shieldTimer(GameConfig.SHIELD_SECONDS);
             case SPEED -> player.speedTimer(GameConfig.SPEED_SECONDS);
@@ -525,6 +614,33 @@ public final class GameWorld {
         powerUps.add(powerUp);
     }
 
+    public void applySnapshot(GameSnapshot snapshot) {
+        levelIndex = snapshot.levelIndex;
+        level = levels.get(levelIndex);
+        tiles = new TileType[level.height()][level.width()];
+        for (int y = 0; y < level.height(); y++) {
+            String row = snapshot.tileRows.get(y);
+            for (int x = 0; x < level.width(); x++) {
+                tiles[y][x] = TileType.fromCode(row.charAt(x));
+            }
+        }
+        status = snapshot.status;
+        score = snapshot.score;
+        highScore = snapshot.highScore;
+        baseAlive = snapshot.baseAlive;
+
+        players.clear();
+        snapshot.players.stream().map(GameSnapshot.TankState::toTank).forEach(players::add);
+        enemies.clear();
+        snapshot.enemies.stream().map(GameSnapshot.TankState::toTank).forEach(enemies::add);
+        bullets.clear();
+        snapshot.bullets.stream().map(GameSnapshot.BulletState::toBullet).forEach(bullets::add);
+        powerUps.clear();
+        snapshot.powerUps.stream().map(GameSnapshot.PowerUpState::toPowerUp).forEach(powerUps::add);
+        explosions.clear();
+        snapshot.explosions.stream().map(GameSnapshot.ExplosionState::toExplosion).forEach(explosions::add);
+    }
+
     public LevelDefinition level() {
         return level;
     }
@@ -538,7 +654,11 @@ public final class GameWorld {
     }
 
     public Tank player() {
-        return player;
+        return players.get(0);
+    }
+
+    public List<Tank> players() {
+        return players;
     }
 
     public List<Tank> enemies() {

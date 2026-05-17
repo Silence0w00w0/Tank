@@ -6,9 +6,13 @@ public final class Explosion {
     private float timer;
 
     public Explosion(float x, float y) {
+        this(x, y, 0.32f);
+    }
+
+    public Explosion(float x, float y, float timer) {
         this.x = x;
         this.y = y;
-        this.timer = 0.32f;
+        this.timer = timer;
     }
 
     public void update(float delta) {
@@ -35,5 +39,9 @@ public final class Explosion {
 
     public float y() {
         return y;
+    }
+
+    public float timer() {
+        return timer;
     }
 }
