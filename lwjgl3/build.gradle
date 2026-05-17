@@ -1,0 +1,21 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':core')
+    implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+}
+
+application {
+    mainClass = 'com.silence.tank.lwjgl3.Lwjgl3Launcher'
+    applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
+
+sourceSets.main.resources.srcDirs += [rootProject.file('assets')]
+
+tasks.named('run') {
+    workingDir = rootProject.file('assets')
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}

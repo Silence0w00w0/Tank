@@ -1,0 +1,11 @@
+.gradle/
+build/
+out/
+*.class
+*.log
+
+# IntelliJ local project files are user-specific here.
+.idea/
+
+# Local implementation scratch files.
+.codex-tmp/
