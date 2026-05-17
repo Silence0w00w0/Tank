@@ -20,6 +20,8 @@ public final class GameConfig {
     public static final float SHIELD_SECONDS = 8f;
     public static final float SPEED_SECONDS = 8f;
     public static final float POWER_SHOT_SECONDS = 10f;
+    public static final float POWERUP_DROP_CHANCE = 0.4f;
+    public static final float POWERUP_DESPAWN_SECONDS = 15f;
     public static final float RESPAWN_SHIELD_SECONDS = 2f;
     public static final int INITIAL_LIVES = 3;
     public static final int MAX_ENEMIES_ON_FIELD = 5;

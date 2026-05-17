@@ -118,6 +118,7 @@ public final class GameSnapshot implements Serializable {
         public PowerUpType type;
         public float x;
         public float y;
+        public float remainingSeconds;
         public boolean active;
 
         public static PowerUpState from(PowerUp powerUp) {
@@ -125,12 +126,13 @@ public final class GameSnapshot implements Serializable {
             state.type = powerUp.type();
             state.x = powerUp.x();
             state.y = powerUp.y();
+            state.remainingSeconds = powerUp.remainingSeconds();
             state.active = powerUp.active();
             return state;
         }
 
         public PowerUp toPowerUp() {
-            PowerUp powerUp = new PowerUp(type, x, y);
+            PowerUp powerUp = new PowerUp(type, x, y, remainingSeconds);
             if (!active) {
                 powerUp.consume();
             }

@@ -19,7 +19,7 @@ class AssetValidationTest {
             assertEquals(GameConfig.MAP_WIDTH, level.width());
             assertEquals(GameConfig.MAP_HEIGHT, level.height());
             assertTrue(!level.waves().isEmpty());
-            assertTrue(!level.powerUps().isEmpty());
+            assertTrue(level.powerUps().isEmpty());
             assertTrue(level.playerSpawns().size() >= 2);
             assertBaseIsProtected(level);
         }
@@ -70,13 +70,11 @@ class AssetValidationTest {
 
     private static void assertBaseIsProtected(LevelDefinition level) {
         GridCoord base = level.basePosition();
-        for (int y = base.y() - 1; y <= base.y() + 1; y++) {
-            for (int x = base.x() - 1; x <= base.x() + 1; x++) {
-                if (x == base.x() && y == base.y()) {
-                    continue;
-                }
-                assertEquals(TileType.BRICK, level.tileAt(x, y));
-            }
-        }
+        assertEquals(level.height() - 1, base.y());
+        assertEquals(TileType.BRICK, level.tileAt(base.x() - 1, base.y() - 1));
+        assertEquals(TileType.BRICK, level.tileAt(base.x(), base.y() - 1));
+        assertEquals(TileType.BRICK, level.tileAt(base.x() + 1, base.y() - 1));
+        assertEquals(TileType.BRICK, level.tileAt(base.x() - 1, base.y()));
+        assertEquals(TileType.BRICK, level.tileAt(base.x() + 1, base.y()));
     }
 }

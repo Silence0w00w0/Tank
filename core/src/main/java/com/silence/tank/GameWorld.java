@@ -89,6 +89,7 @@ public final class GameWorld {
         tickEnemies(delta);
         spawnEnemies(delta);
         tickBullets(delta);
+        tickPowerUps(delta);
         collectPowerUps();
         tickExplosions(delta);
         checkLevelComplete();
@@ -131,9 +132,6 @@ public final class GameWorld {
         }
         for (EnemyWave wave : level.waves()) {
             waves.add(new WaveRuntime(wave));
-        }
-        for (PowerUpSpawn spawn : level.powerUps()) {
-            powerUps.add(new PowerUp(spawn.type(), tileToWorldX(spawn.position().x()), tileToWorldY(spawn.position().y())));
         }
         status = GameStatus.PLAYING;
     }
@@ -383,6 +381,11 @@ public final class GameWorld {
             bullet.update(delta);
             if (bullet.x() < -8f || bullet.y() < -8f || bullet.x() > arenaWidth() || bullet.y() > arenaHeight()) {
                 bullet.destroy();
+            }
+        }
+        resolveBulletCollisions();
+        for (Bullet bullet : bullets) {
+            if (!bullet.alive()) {
                 continue;
             }
             resolveBulletTileHit(bullet);
@@ -391,6 +394,27 @@ public final class GameWorld {
             }
         }
         bullets.removeIf(bullet -> !bullet.alive());
+    }
+
+    private void resolveBulletCollisions() {
+        for (int i = 0; i < bullets.size(); i++) {
+            Bullet first = bullets.get(i);
+            if (!first.alive()) {
+                continue;
+            }
+            for (int j = i + 1; j < bullets.size(); j++) {
+                Bullet second = bullets.get(j);
+                if (!second.alive() || first.fromPlayer() == second.fromPlayer()) {
+                    continue;
+                }
+                if (first.sweptBounds().overlaps(second.sweptBounds())) {
+                    first.destroy();
+                    second.destroy();
+                    explosions.add(new Explosion(first.x() - 12f, first.y() - 12f));
+                    break;
+                }
+            }
+        }
     }
 
     private void resolveBulletTileHit(Bullet bullet) {
@@ -427,6 +451,7 @@ public final class GameWorld {
                     explosions.add(new Explosion(enemy.x(), enemy.y()));
                     if (!enemy.alive()) {
                         score += enemy.enemyType().score;
+                        maybeDropPowerUp(enemy);
                         iterator.remove();
                     }
                     return;
@@ -441,6 +466,24 @@ public final class GameWorld {
                 }
             }
         }
+    }
+
+    private void maybeDropPowerUp(Tank enemy) {
+        if (random.nextFloat() >= GameConfig.POWERUP_DROP_CHANCE) {
+            return;
+        }
+        PowerUpType[] types = PowerUpType.values();
+        PowerUpType type = types[random.nextInt(types.length)];
+        float x = Math.max(0f, Math.min(enemy.x(), arenaWidth() - GameConfig.TILE_SIZE));
+        float y = Math.max(0f, Math.min(enemy.y(), arenaHeight() - GameConfig.TILE_SIZE));
+        powerUps.add(new PowerUp(type, x, y));
+    }
+
+    private void tickPowerUps(float delta) {
+        for (PowerUp powerUp : powerUps) {
+            powerUp.update(delta);
+        }
+        powerUps.removeIf(powerUp -> !powerUp.active());
     }
 
     private void damagePlayer(Tank player) {

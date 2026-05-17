@@ -90,6 +90,76 @@ class GameWorldTest {
     }
 
     @Test
+    void killedEnemyCanDropRandomPowerUp() {
+        GameWorld world = new GameWorld(List.of(levelWithRows("Drop",
+                "....",
+                "....",
+                "....",
+                "...."
+        )), new AlwaysDropRandom());
+        world.startNewGame();
+        Tank enemy = Tank.enemy(EnemyType.BASIC, world.tileToWorldX(2), world.tileToWorldY(2));
+        world.addEnemyForTest(enemy);
+        world.addBulletForTest(new Bullet(true, false, enemy.x() + 12f, enemy.y() + 12f, Direction.UP));
+
+        world.update(0f, InputCommand.none());
+
+        assertTrue(world.enemies().isEmpty());
+        assertEquals(1, world.powerUps().size());
+        assertEquals(PowerUpType.SHIELD, world.powerUps().get(0).type());
+    }
+
+    @Test
+    void droppedPowerUpExpiresAfterTimer() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addPowerUpForTest(new PowerUp(PowerUpType.SPEED, world.tileToWorldX(3), world.tileToWorldY(1), 0.01f));
+
+        world.update(0.02f, InputCommand.none());
+
+        assertTrue(world.powerUps().isEmpty());
+    }
+
+    @Test
+    void playerAndEnemyBulletsCancelEachOther() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        float x = world.tileToWorldX(3) + 8f;
+        float y = world.tileToWorldY(1) + 8f;
+        world.addBulletForTest(new Bullet(true, false, x, y, Direction.UP));
+        world.addBulletForTest(new Bullet(false, false, x, y, Direction.DOWN));
+
+        world.update(0f, InputCommand.none());
+
+        assertTrue(world.bullets().isEmpty());
+    }
+
+    @Test
+    void fastOpposingBulletsCancelWhenPathsCross() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        float y = world.tileToWorldY(1) + 8f;
+        world.addBulletForTest(new Bullet(true, false, world.tileToWorldX(2), y, Direction.RIGHT));
+        world.addBulletForTest(new Bullet(false, false, world.tileToWorldX(2) + 18f, y, Direction.LEFT));
+
+        world.update(0.05f, InputCommand.none());
+
+        assertTrue(world.bullets().isEmpty());
+    }
+
+    @Test
     void twoPlayerWorldKeepsSeparateLivesAndSnapshotState() {
         LevelDefinition level = LevelLoader.load("""
                 {
@@ -176,5 +246,17 @@ class GameWorldTest {
                   ]
                 }
                 """.formatted(name, rows[0].length(), rows.length, rows.length - 1, rows.length - 1, tiles));
+    }
+
+    private static final class AlwaysDropRandom extends Random {
+        @Override
+        public float nextFloat() {
+            return 0f;
+        }
+
+        @Override
+        public int nextInt(int bound) {
+            return 0;
+        }
     }
 }
