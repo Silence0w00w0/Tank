@@ -8,13 +8,22 @@ import com.silence.tank.TankGame;
 
 public final class Lwjgl3Launcher {
     public static void main(String[] args) {
+        LaunchOptions launchOptions = parseOptions(args);
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
-        config.setTitle("Tank");
+        config.setTitle(windowTitle(launchOptions));
         config.setWindowedMode(GameConfig.WINDOW_WIDTH, GameConfig.WINDOW_HEIGHT);
         config.setForegroundFPS(60);
         config.setIdleFPS(30);
         config.useVsync(true);
-        new Lwjgl3Application(new TankGame(parseOptions(args)), config);
+        new Lwjgl3Application(new TankGame(launchOptions), config);
+    }
+
+    private static String windowTitle(LaunchOptions launchOptions) {
+        return switch (launchOptions.mode()) {
+            case HOST -> "Tank Host";
+            case CLIENT -> "Tank Client";
+            case LOCAL -> "Tank";
+        };
     }
 
     private static LaunchOptions parseOptions(String[] args) {
