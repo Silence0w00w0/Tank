@@ -1,19 +1,28 @@
-Tank Windows Portable
+坦克大战 Windows 便携版
 
-No source code, Gradle, IDEA, or installed Java is required.
+无需源码、Gradle、IDEA 或已安装 Java。
 
-Single player:
+单机：
   Tank-Single.bat
 
-LAN host:
+单机自动录屏：
+  Tank-Single.bat --auto
+
+局域网主机：
   Tank-Host.bat
 
-LAN client:
-  Tank-Client.bat HOST_IP
-  Example: Tank-Client.bat 192.168.1.23
+局域网主机自动录屏：
+  Tank-Host.bat --auto
 
-Custom port:
+局域网客户端：
+  Tank-Client.bat 主机IP
+  示例：Tank-Client.bat 192.168.1.23
+
+局域网客户端自动录屏：
+  Tank-Client.bat 主机IP --auto
+
+自定义端口：
   Tank-Host.bat --port 54556
-  Tank-Client.bat HOST_IP --port 54556
+  Tank-Client.bat 主机IP --port 54556
 
-If Windows Firewall asks, allow Java on private networks.
+如果 Windows 防火墙询问，请允许 Java 访问专用网络。

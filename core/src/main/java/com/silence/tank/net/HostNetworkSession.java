@@ -2,6 +2,7 @@ package com.silence.tank.net;
 
 import com.silence.tank.GameSnapshot;
 import com.silence.tank.InputCommand;
+import com.silence.tank.Texts;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -23,7 +24,7 @@ public final class HostNetworkSession implements AutoCloseable {
 
     public HostNetworkSession(int port) {
         this.port = port;
-        this.status = "HOST waiting on port " + port;
+        this.status = Texts.HOST_WAITING + port;
         Thread thread = new Thread(this::acceptLoop, "tank-host-network");
         thread.setDaemon(true);
         thread.start();
@@ -54,7 +55,7 @@ public final class HostNetworkSession implements AutoCloseable {
                 stream.flush();
             } catch (IOException e) {
                 closeClient();
-                status = "HOST client disconnected";
+                status = Texts.HOST_CLIENT_DISCONNECTED;
             }
         }
     }
@@ -66,7 +67,7 @@ public final class HostNetworkSession implements AutoCloseable {
                 Socket socket = server.accept();
                 closeClient();
                 clientSocket = socket;
-                status = "HOST connected to " + socket.getInetAddress().getHostAddress();
+                status = Texts.HOST_CONNECTED + socket.getInetAddress().getHostAddress();
                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                 out.flush();
                 ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
@@ -79,10 +80,10 @@ public final class HostNetworkSession implements AutoCloseable {
                         }
                     }
                 } catch (EOFException ignored) {
-                    status = "HOST client disconnected";
+                    status = Texts.HOST_CLIENT_DISCONNECTED;
                 } catch (IOException | ClassNotFoundException e) {
                     if (running) {
-                        status = "HOST network error: " + e.getClass().getSimpleName();
+                        status = Texts.HOST_NETWORK_ERROR + e.getClass().getSimpleName();
                     }
                 } finally {
                     output = null;
@@ -92,7 +93,7 @@ public final class HostNetworkSession implements AutoCloseable {
             }
         } catch (IOException e) {
             if (running) {
-                status = "HOST failed on port " + port + ": " + e.getMessage();
+                status = Texts.HOST_FAILED + port + "：" + e.getMessage();
             }
         }
     }

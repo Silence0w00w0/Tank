@@ -2,6 +2,7 @@ package com.silence.tank;
 
 import com.badlogic.gdx.math.Rectangle;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -168,6 +169,39 @@ public final class GameWorld {
         }
     }
 
+    public InputCommand autoCommandForPlayer(int playerIndex) {
+        if (status != GameStatus.PLAYING || playerIndex < 0 || playerIndex >= players.size()) {
+            return InputCommand.none();
+        }
+        Tank player = players.get(playerIndex);
+        if (!player.alive()) {
+            return InputCommand.none();
+        }
+
+        Direction shot = safeShotDirection(player);
+        if (shot != null) {
+            return InputCommand.none().move(shot).fire(true);
+        }
+
+        Direction powerUpDirection = directionToNearestPowerUp(player);
+        if (powerUpDirection != null) {
+            return InputCommand.none().move(powerUpDirection);
+        }
+
+        Direction enemyDirection = directionToNearestEnemy(player);
+        if (enemyDirection != null) {
+            return InputCommand.none().move(enemyDirection);
+        }
+
+        Direction defenseDirection = directionToBaseDefense(player);
+        if (defenseDirection != null) {
+            return InputCommand.none().move(defenseDirection);
+        }
+
+        Direction fallback = fallbackAutoDirection(player);
+        return fallback == null ? InputCommand.none() : InputCommand.none().move(fallback);
+    }
+
     private int[] playerLives() {
         int[] lives = new int[players.size()];
         for (int i = 0; i < players.size(); i++) {
@@ -197,6 +231,173 @@ public final class GameWorld {
 
     private boolean anyStart(List<InputCommand> commands) {
         return commands != null && commands.stream().anyMatch(InputCommand::start);
+    }
+
+    private Direction safeShotDirection(Tank player) {
+        Direction best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        int playerGridX = worldToGridX(player.centerX());
+        int playerGridY = worldToGridY(player.centerY());
+        for (Tank enemy : enemies) {
+            if (!enemy.alive()) {
+                continue;
+            }
+            Direction direction = directionIfVisible(player, enemy.bounds());
+            if (direction == null || !shotAvoidsBase(player, direction, enemy.bounds())) {
+                continue;
+            }
+            int enemyGridX = worldToGridX(enemy.centerX());
+            int enemyGridY = worldToGridY(enemy.centerY());
+            int distance = Math.abs(enemyGridX - playerGridX) + Math.abs(enemyGridY - playerGridY);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = direction;
+            }
+        }
+        return best;
+    }
+
+    private boolean shotAvoidsBase(Tank shooter, Direction direction, Rectangle target) {
+        if (!baseAlive) {
+            return true;
+        }
+        int shooterX = worldToGridX(shooter.centerX());
+        int shooterY = worldToGridY(shooter.centerY());
+        GridCoord base = level.basePosition();
+        if (!sameRay(shooterX, shooterY, base.x(), base.y(), direction)) {
+            return true;
+        }
+        int targetX = worldToGridX(target.x + target.width / 2f);
+        int targetY = worldToGridY(target.y + target.height / 2f);
+        int baseDistance = Math.abs(base.x() - shooterX) + Math.abs(base.y() - shooterY);
+        int targetDistance = Math.abs(targetX - shooterX) + Math.abs(targetY - shooterY);
+        return baseDistance >= targetDistance || !clearLine(shooterX, shooterY, base.x(), base.y());
+    }
+
+    private boolean sameRay(int fromX, int fromY, int targetX, int targetY, Direction direction) {
+        return switch (direction) {
+            case UP -> targetX == fromX && targetY < fromY;
+            case DOWN -> targetX == fromX && targetY > fromY;
+            case LEFT -> targetY == fromY && targetX < fromX;
+            case RIGHT -> targetY == fromY && targetX > fromX;
+        };
+    }
+
+    private Direction directionToNearestPowerUp(Tank player) {
+        List<GridCoord> goals = new ArrayList<>();
+        for (PowerUp powerUp : powerUps) {
+            if (powerUp.active()) {
+                goals.add(new GridCoord(
+                        worldToGridX(powerUp.x() + GameConfig.TILE_SIZE / 2f),
+                        worldToGridY(powerUp.y() + GameConfig.TILE_SIZE / 2f)
+                ));
+            }
+        }
+        return firstStepTowardAny(player, goals);
+    }
+
+    private Direction directionToNearestEnemy(Tank player) {
+        List<GridCoord> goals = new ArrayList<>();
+        for (Tank enemy : enemies) {
+            if (!enemy.alive()) {
+                continue;
+            }
+            int enemyX = worldToGridX(enemy.centerX());
+            int enemyY = worldToGridY(enemy.centerY());
+            for (Direction direction : Direction.values()) {
+                goals.add(new GridCoord(enemyX + direction.dx, enemyY - direction.dy));
+            }
+        }
+        return firstStepTowardAny(player, goals);
+    }
+
+    private Direction directionToBaseDefense(Tank player) {
+        if (!baseAlive) {
+            return null;
+        }
+        GridCoord base = level.basePosition();
+        return firstStepTowardAny(player, List.of(
+                new GridCoord(base.x(), base.y() - 2),
+                new GridCoord(base.x() - 1, base.y() - 2),
+                new GridCoord(base.x() + 1, base.y() - 2),
+                new GridCoord(base.x() - 2, base.y()),
+                new GridCoord(base.x() + 2, base.y())
+        ));
+    }
+
+    private Direction firstStepTowardAny(Tank player, List<GridCoord> goals) {
+        if (goals.isEmpty()) {
+            return null;
+        }
+        boolean[][] goalMap = new boolean[level.height()][level.width()];
+        boolean hasReachableGoal = false;
+        for (GridCoord goal : goals) {
+            if (inBounds(goal.x(), goal.y()) && canAutoEnter(player, goal.x(), goal.y())) {
+                goalMap[goal.y()][goal.x()] = true;
+                hasReachableGoal = true;
+            }
+        }
+        if (!hasReachableGoal) {
+            return null;
+        }
+
+        int startX = worldToGridX(player.centerX());
+        int startY = worldToGridY(player.centerY());
+        if (!inBounds(startX, startY) || goalMap[startY][startX]) {
+            return null;
+        }
+
+        boolean[][] visited = new boolean[level.height()][level.width()];
+        Direction[][] firstSteps = new Direction[level.height()][level.width()];
+        ArrayDeque<GridCoord> queue = new ArrayDeque<>();
+        queue.add(new GridCoord(startX, startY));
+        visited[startY][startX] = true;
+
+        while (!queue.isEmpty()) {
+            GridCoord current = queue.removeFirst();
+            for (Direction direction : Direction.values()) {
+                int nextX = current.x() + direction.dx;
+                int nextY = current.y() - direction.dy;
+                if (!inBounds(nextX, nextY) || visited[nextY][nextX] || !canAutoEnter(player, nextX, nextY)) {
+                    continue;
+                }
+                Direction firstStep = current.x() == startX && current.y() == startY
+                        ? direction
+                        : firstSteps[current.y()][current.x()];
+                if (goalMap[nextY][nextX]) {
+                    return firstStep;
+                }
+                visited[nextY][nextX] = true;
+                firstSteps[nextY][nextX] = firstStep;
+                queue.addLast(new GridCoord(nextX, nextY));
+            }
+        }
+        return null;
+    }
+
+    private boolean canAutoEnter(Tank player, int gridX, int gridY) {
+        return inBounds(gridX, gridY) && canOccupy(player, tileToWorldX(gridX), tileToWorldY(gridY));
+    }
+
+    private Direction fallbackAutoDirection(Tank player) {
+        if (canAutoStep(player, player.direction())) {
+            return player.direction();
+        }
+        Direction[] directions = Direction.values();
+        int offset = random.nextInt(directions.length);
+        for (int i = 0; i < directions.length; i++) {
+            Direction direction = directions[(offset + i) % directions.length];
+            if (canAutoStep(player, direction)) {
+                return direction;
+            }
+        }
+        return null;
+    }
+
+    private boolean canAutoStep(Tank player, Direction direction) {
+        int gridX = worldToGridX(player.centerX()) + direction.dx;
+        int gridY = worldToGridY(player.centerY()) - direction.dy;
+        return canAutoEnter(player, gridX, gridY);
     }
 
     private void tickEnemies(float delta) {

@@ -2,6 +2,7 @@ package com.silence.tank.net;
 
 import com.silence.tank.GameSnapshot;
 import com.silence.tank.InputCommand;
+import com.silence.tank.Texts;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -24,7 +25,7 @@ public final class ClientNetworkSession implements AutoCloseable {
     public ClientNetworkSession(String host, int port) {
         this.host = host;
         this.port = port;
-        this.status = "CLIENT connecting to " + host + ":" + port;
+        this.status = Texts.CLIENT_CONNECTING + host + ":" + port;
         Thread thread = new Thread(this::connectLoop, "tank-client-network");
         thread.setDaemon(true);
         thread.start();
@@ -50,7 +51,7 @@ public final class ClientNetworkSession implements AutoCloseable {
                 stream.flush();
             } catch (IOException e) {
                 closeSocket();
-                status = "CLIENT disconnected";
+                status = Texts.CLIENT_DISCONNECTED;
             }
         }
     }
@@ -61,7 +62,7 @@ public final class ClientNetworkSession implements AutoCloseable {
                 Socket next = new Socket();
                 next.connect(new InetSocketAddress(host, port), 3000);
                 socket = next;
-                status = "CLIENT connected to " + host + ":" + port;
+                status = Texts.CLIENT_CONNECTED + host + ":" + port;
                 ObjectOutputStream out = new ObjectOutputStream(next.getOutputStream());
                 out.flush();
                 ObjectInputStream in = new ObjectInputStream(next.getInputStream());
@@ -75,10 +76,10 @@ public final class ClientNetworkSession implements AutoCloseable {
                     }
                 }
             } catch (EOFException ignored) {
-                status = "CLIENT host disconnected";
+                status = Texts.CLIENT_HOST_DISCONNECTED;
             } catch (IOException | ClassNotFoundException e) {
                 if (running) {
-                    status = "CLIENT retrying " + host + ":" + port;
+                    status = Texts.CLIENT_RETRYING + host + ":" + port;
                 }
             } finally {
                 output = null;

@@ -28,7 +28,7 @@ public final class GameScreen extends ScreenAdapter {
 
     private final SpriteBatch batch = new SpriteBatch();
     private final ShapeRenderer shapes = new ShapeRenderer();
-    private final BitmapFont font = new BitmapFont();
+    private final BitmapFont font;
     private final GlyphLayout layout = new GlyphLayout();
     private final Viewport viewport = new FitViewport(GameConfig.WINDOW_WIDTH, GameConfig.WINDOW_HEIGHT);
     private final TextureAtlas atlas;
@@ -55,6 +55,7 @@ public final class GameScreen extends ScreenAdapter {
         world.highScore(preferences.getInteger(PREF_HIGH_SCORE, 0));
         hostSession = launchOptions.mode() == GameMode.HOST ? new HostNetworkSession(launchOptions.port()) : null;
         clientSession = launchOptions.mode() == GameMode.CLIENT ? new ClientNetworkSession(launchOptions.host(), launchOptions.port()) : null;
+        font = GameFontFactory.createFont();
         font.getData().setScale(1.18f);
         font.setUseIntegerPositions(false);
     }
@@ -63,16 +64,19 @@ public final class GameScreen extends ScreenAdapter {
     public void render(float delta) {
         InputCommand command = readInput();
         if (launchOptions.mode() == GameMode.CLIENT) {
-            clientSession.sendInput(command);
             GameSnapshot snapshot = clientSession.latestSnapshot();
             if (snapshot != null) {
                 world.applySnapshot(snapshot);
             }
+            command = commandForMode(command);
+            clientSession.sendInput(command);
         } else if (launchOptions.mode() == GameMode.HOST) {
+            command = commandForMode(command);
             world.update(delta, List.of(command, hostSession.remoteInput()));
             hostSession.sendSnapshot(GameSnapshot.from(world));
             persistProgress();
         } else {
+            command = commandForMode(command);
             world.update(delta, command);
             persistProgress();
         }
@@ -112,6 +116,21 @@ public final class GameScreen extends ScreenAdapter {
         command.restart(Gdx.input.isKeyJustPressed(Input.Keys.R));
         command.start(Gdx.input.isKeyJustPressed(Input.Keys.ENTER));
         return command;
+    }
+
+    private InputCommand commandForMode(InputCommand manual) {
+        if (!launchOptions.autoMode() || world.status() != GameStatus.PLAYING) {
+            return manual;
+        }
+        InputCommand automatic = world.autoCommandForPlayer(localPlayerIndex());
+        return automatic
+                .pause(manual.pause())
+                .restart(manual.restart())
+                .start(manual.start());
+    }
+
+    private int localPlayerIndex() {
+        return launchOptions.mode() == GameMode.CLIENT ? 1 : 0;
     }
 
     private void drawArenaBackground() {
@@ -231,16 +250,16 @@ public final class GameScreen extends ScreenAdapter {
     private void drawHud() {
         font.setColor(Color.WHITE);
         float y = GameConfig.ARENA_HEIGHT + 58f;
-        font.draw(batch, "LEVEL " + (world.levelIndex() + 1) + "  " + world.level().name(), 12f, y);
-        font.draw(batch, "SCORE " + world.score(), 330f, y);
-        font.draw(batch, "HIGH " + world.highScore(), 520f, y);
+        font.draw(batch, Texts.LEVEL + " " + (world.levelIndex() + 1) + "  " + world.level().name(), 12f, y);
+        font.draw(batch, Texts.SCORE + " " + world.score(), 330f, y);
+        font.draw(batch, Texts.HIGH_SCORE + " " + world.highScore(), 520f, y);
         String lives = world.players().size() > 1
-                ? "P1 " + world.players().get(0).lives() + "  P2 " + world.players().get(1).lives()
-                : "LIVES " + world.player().lives();
+                ? "P1 " + Texts.LIVES + " " + world.players().get(0).lives() + "  P2 " + Texts.LIVES + " " + world.players().get(1).lives()
+                : Texts.LIVES + " " + world.player().lives();
         font.draw(batch, lives, 700f, y);
 
         font.setColor(0.75f, 0.82f, 0.86f, 1f);
-        font.draw(batch, "WASD/ARROWS MOVE   SPACE/J FIRE   P PAUSE   R RESTART", 12f, GameConfig.ARENA_HEIGHT + 24f);
+        font.draw(batch, Texts.CONTROLS, 12f, GameConfig.ARENA_HEIGHT + 24f);
         if (launchOptions.mode() != GameMode.LOCAL) {
             font.draw(batch, networkStatus(), 560f, GameConfig.ARENA_HEIGHT + 24f);
         }
@@ -248,15 +267,15 @@ public final class GameScreen extends ScreenAdapter {
 
     private void drawStatusOverlay() {
         if (launchOptions.mode() == GameMode.CLIENT && clientSession.latestSnapshot() == null) {
-            drawCentered("CONNECTING", clientSession.status());
+            drawCentered(Texts.CONNECTING, clientSession.status());
             return;
         }
         switch (world.status()) {
-            case MENU -> drawCentered("TANK", menuSubtitle());
-            case PAUSED -> drawCentered("PAUSED", "Press P to continue");
-            case LEVEL_CLEAR -> drawCentered("LEVEL CLEAR", "Press ENTER for next level");
-            case GAME_OVER -> drawCentered("GAME OVER", "Press R or ENTER to restart");
-            case VICTORY -> drawCentered("VICTORY", "Press R or ENTER to play again");
+            case MENU -> drawCentered(Texts.GAME_TITLE, menuSubtitle());
+            case PAUSED -> drawCentered(Texts.PAUSED, Texts.PAUSED_SUBTITLE);
+            case LEVEL_CLEAR -> drawCentered(Texts.LEVEL_CLEAR, Texts.LEVEL_CLEAR_SUBTITLE);
+            case GAME_OVER -> drawCentered(Texts.GAME_OVER, Texts.GAME_OVER_SUBTITLE);
+            case VICTORY -> drawCentered(Texts.VICTORY, Texts.VICTORY_SUBTITLE);
             default -> {
             }
         }
@@ -264,9 +283,9 @@ public final class GameScreen extends ScreenAdapter {
 
     private String menuSubtitle() {
         return switch (launchOptions.mode()) {
-            case HOST -> "P1 host: press ENTER after client joins";
-            case CLIENT -> "P2 client: press ENTER when host is ready";
-            case LOCAL -> "Press ENTER or SPACE to start";
+            case HOST -> Texts.MENU_HOST;
+            case CLIENT -> Texts.MENU_CLIENT;
+            case LOCAL -> Texts.MENU_LOCAL;
         };
     }
 

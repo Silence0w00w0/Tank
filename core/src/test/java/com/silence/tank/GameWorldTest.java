@@ -2,6 +2,8 @@ package com.silence.tank;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.util.List;
 import java.util.Random;
 
@@ -228,6 +230,82 @@ class GameWorldTest {
 
         assertEquals(1, world.levelIndex());
         assertEquals(GameStatus.PLAYING, world.status());
+    }
+
+    @Test
+    void autoCommandFiresAtVisibleEnemy() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addEnemyForTest(Tank.enemy(EnemyType.BASIC, world.tileToWorldX(1), world.tileToWorldY(2)));
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertEquals(Direction.UP, command.moveDirection());
+        assertTrue(command.fire());
+    }
+
+    @Test
+    void autoCommandDoesNotFireThroughBase() {
+        GameWorld world = new GameWorld(List.of(LevelLoader.load("""
+                {
+                  "name": "Auto Safety",
+                  "width": 3,
+                  "height": 4,
+                  "player": { "x": 1, "y": 1 },
+                  "base": { "x": 1, "y": 2 },
+                  "tiles": [
+                    "...",
+                    "...",
+                    "...",
+                    "..."
+                  ]
+                }
+                """)), new Random(4));
+        world.startNewGame();
+        world.addEnemyForTest(Tank.enemy(EnemyType.BASIC, world.tileToWorldX(1), world.tileToWorldY(3)));
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertTrue(!command.fire());
+    }
+
+    @Test
+    void autoCommandMovesTowardPowerUp() {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addPowerUpForTest(new PowerUp(PowerUpType.SHIELD, world.tileToWorldX(1), world.tileToWorldY(2)));
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertEquals(Direction.UP, command.moveDirection());
+        assertTrue(!command.fire());
+    }
+
+    @Test
+    void autoCommandCanUseExistingInputSerialization() throws Exception {
+        GameWorld world = worldWithRows(
+                "....",
+                "....",
+                "....",
+                "...."
+        );
+        world.addEnemyForTest(Tank.enemy(EnemyType.BASIC, world.tileToWorldX(1), world.tileToWorldY(2)));
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+            out.writeObject(command);
+        }
+
+        assertTrue(bytes.size() > 0);
     }
 
     @Test

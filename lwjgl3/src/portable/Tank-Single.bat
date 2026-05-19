@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 set "ROOT=%~dp0"
 set "JAVA_EXE=%ROOT%runtime\bin\java.exe"
@@ -6,7 +7,7 @@ set "APP_HOME=%ROOT%app"
 set "ASSETS_DIR=%ROOT%assets"
 
 if not exist "%JAVA_EXE%" (
-  echo Missing bundled Java runtime: %JAVA_EXE%
+  echo 缺少内置 Java 运行时：%JAVA_EXE%
   pause
   exit /b 1
 )

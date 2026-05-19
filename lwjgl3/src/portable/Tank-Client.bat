@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 set "ROOT=%~dp0"
 set "JAVA_EXE=%ROOT%runtime\bin\java.exe"
@@ -6,14 +7,14 @@ set "APP_HOME=%ROOT%app"
 set "ASSETS_DIR=%ROOT%assets"
 
 if "%~1"=="" (
-  echo Usage: Tank-Client.bat HOST_IP [--port PORT]
-  echo Example: Tank-Client.bat 192.168.1.23
+  echo 用法：Tank-Client.bat 主机IP [--port 端口] [--auto]
+  echo 示例：Tank-Client.bat 192.168.1.23
   pause
   exit /b 1
 )
 
 if not exist "%JAVA_EXE%" (
-  echo Missing bundled Java runtime: %JAVA_EXE%
+  echo 缺少内置 Java 运行时：%JAVA_EXE%
   pause
   exit /b 1
 )
