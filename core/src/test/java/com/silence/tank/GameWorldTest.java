@@ -249,6 +249,23 @@ class GameWorldTest {
     }
 
     @Test
+    void autoCommandTurnsWhenBulletLaneOverlapsAcrossGridRows() {
+        GameWorld world = worldWithRows(
+                ".....",
+                ".....",
+                ".....",
+                "....."
+        );
+        world.player().setPosition(world.tileToWorldX(1), world.tileToWorldY(3) + 15.5f);
+        world.addEnemyForTest(Tank.enemy(EnemyType.BASIC, world.tileToWorldX(3), world.tileToWorldY(2)));
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertEquals(Direction.RIGHT, command.moveDirection());
+        assertTrue(command.fire());
+    }
+
+    @Test
     void autoCommandDoesNotFireThroughBase() {
         GameWorld world = new GameWorld(List.of(LevelLoader.load("""
                 {
@@ -286,6 +303,42 @@ class GameWorldTest {
         InputCommand command = world.autoCommandForPlayer(0);
 
         assertEquals(Direction.UP, command.moveDirection());
+        assertTrue(!command.fire());
+    }
+
+    @Test
+    void autoCommandPatrolsForwardWhenNoEnemyIsVisible() {
+        GameWorld world = new GameWorld(List.of(protectedBaseLevel()), new Random(8));
+        world.startNewGame();
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertEquals(Direction.UP, command.moveDirection());
+        assertTrue(!command.fire());
+    }
+
+    @Test
+    void autoCommandDoesNotIdleOnCurrentDefensePoint() {
+        GameWorld world = new GameWorld(List.of(LevelLoader.load("""
+                {
+                  "name": "Auto Defense Patrol",
+                  "width": 5,
+                  "height": 4,
+                  "player": { "x": 0, "y": 1 },
+                  "base": { "x": 2, "y": 3 },
+                  "tiles": [
+                    ".....",
+                    ".....",
+                    ".BBB.",
+                    ".B.B."
+                  ]
+                }
+                """)), new Random(8));
+        world.startNewGame();
+
+        InputCommand command = world.autoCommandForPlayer(0);
+
+        assertTrue(command.moveDirection() != null);
         assertTrue(!command.fire());
     }
 

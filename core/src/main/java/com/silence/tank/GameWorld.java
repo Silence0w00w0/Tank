@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Random;
 
 public final class GameWorld {
+    private static final float BULLET_HALF_SIZE = 4f;
+
     private final List<LevelDefinition> levels;
     private final Random random;
     private final int playerCount;
@@ -258,17 +260,21 @@ public final class GameWorld {
     }
 
     private boolean shotAvoidsBase(Tank shooter, Direction direction, Rectangle target) {
+        int shooterX = worldToGridX(shooter.centerX());
+        int shooterY = worldToGridY(shooter.centerY());
+        int targetX = worldToGridX(target.x + target.width / 2f);
+        int targetY = worldToGridY(target.y + target.height / 2f);
+        return shotFromGridAvoidsBase(shooterX, shooterY, direction, targetX, targetY);
+    }
+
+    private boolean shotFromGridAvoidsBase(int shooterX, int shooterY, Direction direction, int targetX, int targetY) {
         if (!baseAlive) {
             return true;
         }
-        int shooterX = worldToGridX(shooter.centerX());
-        int shooterY = worldToGridY(shooter.centerY());
         GridCoord base = level.basePosition();
         if (!sameRay(shooterX, shooterY, base.x(), base.y(), direction)) {
             return true;
         }
-        int targetX = worldToGridX(target.x + target.width / 2f);
-        int targetY = worldToGridY(target.y + target.height / 2f);
         int baseDistance = Math.abs(base.x() - shooterX) + Math.abs(base.y() - shooterY);
         int targetDistance = Math.abs(targetX - shooterX) + Math.abs(targetY - shooterY);
         return baseDistance >= targetDistance || !clearLine(shooterX, shooterY, base.x(), base.y());
@@ -297,18 +303,42 @@ public final class GameWorld {
     }
 
     private Direction directionToNearestEnemy(Tank player) {
-        List<GridCoord> goals = new ArrayList<>();
+        List<GridCoord> firingGoals = new ArrayList<>();
+        List<GridCoord> adjacentGoals = new ArrayList<>();
         for (Tank enemy : enemies) {
             if (!enemy.alive()) {
                 continue;
             }
             int enemyX = worldToGridX(enemy.centerX());
             int enemyY = worldToGridY(enemy.centerY());
+            addAutoFiringGoals(enemyX, enemyY, firingGoals);
             for (Direction direction : Direction.values()) {
-                goals.add(new GridCoord(enemyX + direction.dx, enemyY - direction.dy));
+                adjacentGoals.add(new GridCoord(enemyX + direction.dx, enemyY - direction.dy));
             }
         }
-        return firstStepTowardAny(player, goals);
+        Direction firingDirection = firstStepTowardAny(player, firingGoals);
+        return firingDirection != null ? firingDirection : firstStepTowardAny(player, adjacentGoals);
+    }
+
+    private void addAutoFiringGoals(int enemyX, int enemyY, List<GridCoord> goals) {
+        for (int x = 0; x < level.width(); x++) {
+            if (x == enemyX) {
+                continue;
+            }
+            Direction shot = x < enemyX ? Direction.RIGHT : Direction.LEFT;
+            if (clearLine(x, enemyY, enemyX, enemyY) && shotFromGridAvoidsBase(x, enemyY, shot, enemyX, enemyY)) {
+                goals.add(new GridCoord(x, enemyY));
+            }
+        }
+        for (int y = 0; y < level.height(); y++) {
+            if (y == enemyY) {
+                continue;
+            }
+            Direction shot = y > enemyY ? Direction.UP : Direction.DOWN;
+            if (clearLine(enemyX, y, enemyX, enemyY) && shotFromGridAvoidsBase(enemyX, y, shot, enemyX, enemyY)) {
+                goals.add(new GridCoord(enemyX, y));
+            }
+        }
     }
 
     private Direction directionToBaseDefense(Tank player) {
@@ -317,21 +347,36 @@ public final class GameWorld {
         }
         GridCoord base = level.basePosition();
         return firstStepTowardAny(player, List.of(
+                new GridCoord(base.x(), base.y() - 4),
+                new GridCoord(base.x() - 3, base.y() - 3),
+                new GridCoord(base.x() + 3, base.y() - 3),
+                new GridCoord(base.x() - 2, base.y() - 2),
+                new GridCoord(base.x() + 2, base.y() - 2),
                 new GridCoord(base.x(), base.y() - 2),
-                new GridCoord(base.x() - 1, base.y() - 2),
-                new GridCoord(base.x() + 1, base.y() - 2),
                 new GridCoord(base.x() - 2, base.y()),
                 new GridCoord(base.x() + 2, base.y())
-        ));
+        ), true);
     }
 
     private Direction firstStepTowardAny(Tank player, List<GridCoord> goals) {
+        return firstStepTowardAny(player, goals, false);
+    }
+
+    private Direction firstStepTowardAny(Tank player, List<GridCoord> goals, boolean excludeCurrentGoal) {
         if (goals.isEmpty()) {
+            return null;
+        }
+        int startX = worldToGridX(player.centerX());
+        int startY = worldToGridY(player.centerY());
+        if (!inBounds(startX, startY)) {
             return null;
         }
         boolean[][] goalMap = new boolean[level.height()][level.width()];
         boolean hasReachableGoal = false;
         for (GridCoord goal : goals) {
+            if (excludeCurrentGoal && goal.x() == startX && goal.y() == startY) {
+                continue;
+            }
             if (inBounds(goal.x(), goal.y()) && canAutoEnter(player, goal.x(), goal.y())) {
                 goalMap[goal.y()][goal.x()] = true;
                 hasReachableGoal = true;
@@ -341,9 +386,7 @@ public final class GameWorld {
             return null;
         }
 
-        int startX = worldToGridX(player.centerX());
-        int startY = worldToGridY(player.centerY());
-        if (!inBounds(startX, startY) || goalMap[startY][startX]) {
+        if (goalMap[startY][startX]) {
             return null;
         }
 
@@ -459,13 +502,38 @@ public final class GameWorld {
         int enemyGridY = worldToGridY(enemy.centerY());
         int targetGridX = worldToGridX(target.x + target.width / 2f);
         int targetGridY = worldToGridY(target.y + target.height / 2f);
-        if (enemyGridX == targetGridX && clearLine(enemyGridX, enemyGridY, targetGridX, targetGridY)) {
-            return targetGridY < enemyGridY ? Direction.UP : Direction.DOWN;
-        }
-        if (enemyGridY == targetGridY && clearLine(enemyGridX, enemyGridY, targetGridX, targetGridY)) {
+
+        if (enemyGridX != targetGridX && horizontalShotAligned(enemy, target)
+                && clearLine(enemyGridX, enemyGridY, targetGridX, enemyGridY)) {
             return targetGridX > enemyGridX ? Direction.RIGHT : Direction.LEFT;
         }
+        if (enemyGridY != targetGridY && verticalShotAligned(enemy, target)
+                && clearLine(enemyGridX, enemyGridY, enemyGridX, targetGridY)) {
+            return targetGridY < enemyGridY ? Direction.UP : Direction.DOWN;
+        }
         return null;
+    }
+
+    private boolean horizontalShotAligned(Tank shooter, Rectangle target) {
+        return rangesOverlap(
+                shooter.centerY() - BULLET_HALF_SIZE,
+                shooter.centerY() + BULLET_HALF_SIZE,
+                target.y,
+                target.y + target.height
+        );
+    }
+
+    private boolean verticalShotAligned(Tank shooter, Rectangle target) {
+        return rangesOverlap(
+                shooter.centerX() - BULLET_HALF_SIZE,
+                shooter.centerX() + BULLET_HALF_SIZE,
+                target.x,
+                target.x + target.width
+        );
+    }
+
+    private boolean rangesOverlap(float minA, float maxA, float minB, float maxB) {
+        return minA < maxB && maxA > minB;
     }
 
     private boolean clearLine(int x1, int y1, int x2, int y2) {
